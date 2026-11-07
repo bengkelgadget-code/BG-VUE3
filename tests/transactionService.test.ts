@@ -235,4 +235,55 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
     const cust = await db.customers.get(custId);
     expect(cust?.balanceHutang).toBe(50000);
   });
+
+  it('void membalik saldo dan stok fisik, baris transaksi tetap ada berstatus void (TIDAK ADA DELETE)', async () => {
+    // 1. Simpan saldo awal
+    const initialKas = await accountService.getBalance(kasId);
+    const initialStock = (await db.products.get(voucherId))?.stock ?? 0;
+
+    // 2. Transaksi penjualan voucher tunai
+    const txId = await transactionService.addTransaction(
+      {
+        layanan: 'voucher',
+        accountId: kasId,
+        nominal: 25000,
+        fee: 0,
+        feePaidBy: 'cash',
+        feeManualOverride: false,
+        paymentMethod: 'tunai',
+        paymentStatus: 'lunas',
+        productId: voucherId,
+        date: Date.now(),
+      },
+      { actorUserId: 'kasir-1', shiftId: 'shift-1' }
+    );
+
+    // Saldo kas bertambah 32.000 (sesuai snapshot master), stok berkurang 1
+    expect(await accountService.getBalance(kasId)).toBe(initialKas + 32000);
+    expect((await db.products.get(voucherId))?.stock).toBe(initialStock - 1);
+
+    // 3. Void tanpa alasan yang valid (< 3 karakter) -> DITOLAK
+    await expect(
+      transactionService.voidTransaction(txId, {
+        reason: 'ok',
+        actorUserId: 'kasir-1',
+      })
+    ).rejects.toThrow('Alasan pembatalan (void) transaksi wajib diisi minimal 3 karakter');
+
+    // 4. Void dengan alasan sah
+    await transactionService.voidTransaction(txId, {
+      reason: 'Pelanggan salah beli denominasi',
+      actorUserId: 'kasir-1',
+    });
+
+    // 5. Saldo kas dan stok kembali persis seperti semula
+    expect(await accountService.getBalance(kasId)).toBe(initialKas);
+    expect((await db.products.get(voucherId))?.stock).toBe(initialStock);
+
+    // 6. Baris transaksi tetap ada di database (bukan di-delete), berstatus 'void'
+    const tx = await db.transactions.get(txId);
+    expect(tx).toBeDefined();
+    expect(tx?.status).toBe('void');
+    expect(tx?.voidReason).toBe('Pelanggan salah beli denominasi');
+  });
 });

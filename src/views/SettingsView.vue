@@ -73,6 +73,10 @@
             <span class="item-title">Master Pelanggan</span>
             <span class="item-desc">Data pelanggan & piutang</span>
           </router-link>
+          <router-link to="/audit-logs" class="menu-item">
+            <span class="item-title">Jejak Audit Aktivitas</span>
+            <span class="item-desc">Log koreksi saldo, void, serah terima, opname</span>
+          </router-link>
         </div>
       </div>
 

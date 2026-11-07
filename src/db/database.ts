@@ -41,13 +41,13 @@ export class BukuKonterDB extends Dexie {
       adminFeeRules: 'id, layanan, groupId, isActive',
       transactions: 'id, layanan, shiftId, userId, accountId, sourceAccountId, customerId, paymentStatus, status, date',
       transactionItems: 'id, transactionId, productId',
-      shifts: 'id, userId, status, openedAt',
+      shifts: 'id, userId, status, [userId+status], openedAt',
       shiftHandovers: 'id, shiftId, fromUserId, toUserId',
-      stockMovements: 'id, productId, transactionId, shiftId, createdAt',
+      stockMovements: 'id, productId, reason, transactionId, shiftId, createdAt',
       users: 'id, role, isActive',
       customers: 'id, phone',
       productCatalogCache: 'id, category, isActive',
-      auditLogs: 'id, actorUserId, entityType, entityId, createdAt',
+      auditLogs: 'id, actorUserId, action, entityType, entityId, createdAt',
       appSettings: 'id',
     });
   }

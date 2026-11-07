@@ -145,7 +145,7 @@ export class ShiftService {
     fromPin: string;
     toPin: string;
     note?: string;
-  }): Promise<string> {
+  }): Promise<{ handoverId: string; status: 'done' | 'pending_owner' }> {
     const shift = await db.shifts.get(params.shiftId);
     if (!shift) {
       throw new AppError('Shift tidak ditemukan.');
@@ -163,24 +163,59 @@ export class ShiftService {
       throw new AppError('PIN petugas penerima salah.');
     }
 
+    const appSettings = await db.appSettings.get(1);
+    const tolerance = appSettings?.shiftTolerance ?? 5000;
+
+    let exceedsTolerance = false;
+    if (shift.selisih) {
+      for (const diff of Object.values(shift.selisih)) {
+        if (Math.abs(diff) > tolerance) {
+          exceedsTolerance = true;
+          break;
+        }
+      }
+    }
+
+    const handoverStatus: 'done' | 'pending_owner' = exceedsTolerance ? 'pending_owner' : 'done';
     const handoverId = uuidv4();
     const now = Date.now();
 
-    await db.transaction('rw', [db.shifts, db.shiftHandovers, db.auditLogs], async () => {
+    await db.transaction('rw', [db.shifts, db.shiftHandovers, db.auditLogs, db.accounts, db.accountLedger], async () => {
       await db.shiftHandovers.add({
         id: handoverId,
         shiftId: params.shiftId,
         fromUserId: shift.userId,
         toUserId: params.toUserId,
         hitungFisikDiterima: shift.hitungFisik || {},
-        status: 'done',
+        status: handoverStatus,
         note: params.note,
         createdAt: now,
       });
 
       await db.shifts.update(params.shiftId, {
-        status: 'handed_over',
+        status: handoverStatus === 'pending_owner' ? 'pending_owner' : 'handed_over',
       });
+
+      // Jika serah terima selesai (dalam batas toleransi), otomatis buka shift baru untuk petugas penerima
+      if (handoverStatus === 'done') {
+        const existingActive = await db.shifts.where({ userId: params.toUserId, status: 'open' }).first();
+        if (!existingActive) {
+          const accounts = await db.accounts.toArray();
+          const kasAccount = accounts.find((a) => a.type === 'kas');
+          const kasFisik = kasAccount && shift.hitungFisik ? (shift.hitungFisik[kasAccount.id] ?? shift.kasAwalFisik) : shift.kasAwalFisik;
+          const saldoAwalSistem = await accountService.getAllBalances();
+
+          await db.shifts.add({
+            id: uuidv4(),
+            userId: params.toUserId,
+            openedAt: now,
+            saldoAwalSistem,
+            kasAwalFisik: kasFisik,
+            status: 'open',
+            note: `Dibuka otomatis dari serah terima shift ${shift.id.substring(0, 8)}`,
+          });
+        }
+      }
 
       await db.auditLogs.add({
         id: uuidv4(),
@@ -188,12 +223,60 @@ export class ShiftService {
         action: 'handover',
         entityType: 'shift',
         entityId: params.shiftId,
-        detail: JSON.stringify({ toUserId: params.toUserId }),
+        detail: JSON.stringify({ toUserId: params.toUserId, status: handoverStatus }),
         createdAt: now,
       });
     });
 
-    return handoverId;
+    return { handoverId, status: handoverStatus };
+  }
+
+  /**
+   * Persetujuan Owner untuk serah terima shift dengan selisih di atas toleransi
+   */
+  public async approveHandover(handoverId: string, opts: { actorUserId: string }): Promise<void> {
+    const actor = await db.users.get(opts.actorUserId);
+    if (!actor || actor.role !== 'owner') {
+      throw new AppError('Hanya Owner yang berhak menyetujui serah terima berselisih.');
+    }
+    const handover = await db.shiftHandovers.get(handoverId);
+    if (!handover) throw new AppError('Data serah terima tidak ditemukan.');
+
+    const now = Date.now();
+    await db.transaction('rw', [db.shifts, db.shiftHandovers, db.auditLogs, db.accounts, db.accountLedger], async () => {
+      await db.shiftHandovers.update(handoverId, { status: 'done' });
+      await db.shifts.update(handover.shiftId, { status: 'handed_over' });
+
+      // Buka shift penerima
+      const existingActive = await db.shifts.where({ userId: handover.toUserId, status: 'open' }).first();
+      if (!existingActive) {
+        const shift = await db.shifts.get(handover.shiftId);
+        const accounts = await db.accounts.toArray();
+        const kasAccount = accounts.find((a) => a.type === 'kas');
+        const kasFisik = kasAccount && shift?.hitungFisik ? (shift.hitungFisik[kasAccount.id] ?? shift.kasAwalFisik) : (shift?.kasAwalFisik ?? 0);
+        const saldoAwalSistem = await accountService.getAllBalances();
+
+        await db.shifts.add({
+          id: uuidv4(),
+          userId: handover.toUserId,
+          openedAt: now,
+          saldoAwalSistem,
+          kasAwalFisik: kasFisik,
+          status: 'open',
+          note: `Disetujui Owner dari serah terima shift ${handover.shiftId.substring(0, 8)}`,
+        });
+      }
+
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: opts.actorUserId,
+        action: 'approve_handover',
+        entityType: 'shift_handover',
+        entityId: handoverId,
+        detail: JSON.stringify({ approved: true }),
+        createdAt: now,
+      });
+    });
   }
 
   public async getActiveShift(userId: string): Promise<Shift | undefined> {

@@ -174,6 +174,32 @@
               </select>
             </div>
           </div>
+
+          <!-- Layanan Deposit Server / Provider (Dicatat) -->
+          <div v-else-if="['deposit_server', 'deposit_provider'].includes(layanan)" class="cascading-fields">
+            <div class="form-group">
+              <label class="form-label">Sumber Dana (Rekening / Kas Keluar)</label>
+              <select v-model="sourceAccountId" class="form-select" required>
+                <option disabled value="">-- Pilih Akun Sumber Dana --</option>
+                <option v-for="acc in activeAccounts.filter(a => ['bank', 'kas'].includes(a.type))" :key="acc.id" :value="acc.id">
+                  {{ acc.name }}
+                </option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Akun Saldo Catatan (Bertambah)</label>
+              <select v-model="destAccountId" class="form-select" required>
+                <option disabled value="">-- Pilih Akun Catatan --</option>
+                <option
+                  v-for="acc in activeAccounts.filter((a) => layanan === 'deposit_server' ? a.type === 'server_pulsa' : a.type === 'provider_app')"
+                  :key="acc.id"
+                  :value="acc.id"
+                >
+                  {{ acc.name }} (catatan)
+                </option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <!-- 3. Baris Nominal Pokok + Biaya Admin + Bayar Admin (Satu Baris) -->
@@ -182,7 +208,7 @@
             v-model="nominal"
             v-model:fee="fee"
             v-model:feePaidBy="feePaidBy"
-            :hide-admin="['voucher', 'perdana', 'aksesoris', 'pulsa', 'data', 'token_pln', 'operasional', 'pindah_dana'].includes(layanan)"
+            :hide-admin="['voucher', 'perdana', 'aksesoris', 'pulsa', 'data', 'token_pln', 'operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)"
             :is-auto-fee="Boolean(matchedRule && !feeManualOverride)"
             :fee-manual-override="feeManualOverride"
             @update:model-value="onNominalChanged"
@@ -198,7 +224,7 @@
         </div>
 
         <!-- 4. Metode Terima & Status Pembayaran (Lunas / Hutang) -->
-        <div v-if="!['operasional', 'pindah_dana'].includes(layanan)" class="form-section card-section">
+        <div v-if="!['operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)" class="form-section card-section">
           <div class="form-row">
             <div class="form-group flex-1">
               <label class="form-label">Diterima Lewat</label>
@@ -347,6 +373,8 @@ const primaryServices = [
   { code: 'aksesoris', label: 'Aksesoris', icon: Package },
   { code: 'ppob', label: 'Tagihan PPOB', icon: Receipt },
   { code: 'pindah_dana', label: 'Pindah Dana', icon: RefreshCw },
+  { code: 'deposit_server', label: 'Deposit Server', icon: Smartphone },
+  { code: 'deposit_provider', label: 'Deposit Provider', icon: Layers },
   { code: 'operasional', label: 'Operasional', icon: TrendingDown },
 ];
 

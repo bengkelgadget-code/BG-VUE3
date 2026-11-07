@@ -121,6 +121,16 @@ export class BackupService {
       throw new AppError('File bukan cadangan resmi BUKU KONTER.');
     }
 
+    // Buat cadangan otomatis sebelum melakukan restore (safety backup)
+    try {
+      const autoSafetyBackup = await this.createBackup();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('buku_konter_safety_backup_pre_restore', autoSafetyBackup);
+      }
+    } catch {
+      // Abaikan bila storage penuh
+    }
+
     await db.transaction(
       'rw',
       [
