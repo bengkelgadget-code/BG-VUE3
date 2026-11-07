@@ -161,6 +161,7 @@ export interface Customer {
   phone?: string;
   note?: string;
   balanceHutang: number; // int Rupiah, >= 0
+  isActive?: boolean;
   createdAt: number;
 }
 

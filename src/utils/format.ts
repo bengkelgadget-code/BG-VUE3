@@ -55,6 +55,18 @@ export function formatTanggalWita(
 }
 
 /**
+ * Format timestamp epoch ms ke tanggal pendek WITA (e.g. '8 Nov')
+ */
+export function formatShortDate(epochMs: number): string {
+  if (!epochMs) return '-';
+  return new Intl.DateTimeFormat('id-ID', {
+    timeZone: TIMEZONE,
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(epochMs));
+}
+
+/**
  * Format tanggal YYYY-MM-DD HH:mm WITA untuk ekspor CSV / log
  */
 export function formatCsvDateTime(epochMs: number): string {

@@ -1,0 +1,401 @@
+import { v4 as uuidv4 } from 'uuid';
+import { db } from '../db/database';
+import type { Transaction, TransactionItem } from '../db/types';
+import { AppError } from '../core/errors';
+import { productService } from './productService';
+import { balanceService } from './balanceService';
+import { stockService } from './stockService';
+
+export interface CartItemInput {
+  productId: string;
+  qty?: number;
+  nominal?: number;
+}
+
+export interface TransactionInput {
+  layanan: string;
+  productId?: string;
+  accountId?: string; // pembayaran / penerimaan
+  sourceAccountId?: string;
+  destAccountId?: string;
+  nominal: number; // int Rupiah, > 0
+  fee: number; // int Rupiah, >= 0
+  feePaidBy: 'cash' | 'debit_rekening';
+  feeRuleId?: string;
+  feeManualOverride: boolean;
+  paymentMethod: 'tunai' | 'transfer' | 'qris' | 'ewallet';
+  paymentStatus?: 'lunas' | 'hutang';
+  date: number; // epoch ms (WITA)
+  note?: string;
+  referenceNo?: string;
+  photoPath?: string;
+  customerId?: string; // WAJIB bila paymentStatus == 'hutang'
+  cartItems?: CartItemInput[]; // keranjang multi-item
+}
+
+export class TransactionService {
+  /**
+   * Simpan transaksi secara atomik di database:
+   * 1. Simpan baris transaksi
+   * 2. Simpan snapshot modal & harga jual di transaction_items (kasir tidak menginput modal)
+   * 3. Terapkan delta saldo catatan via balanceService
+   * 4. Kurangi stok fisik jika kategori voucher/perdana/aksesoris
+   * 5. Update saldo hutang pelanggan jika status bayar == 'hutang'
+   */
+  public async addTransaction(
+    input: TransactionInput,
+    opts: { actorUserId: string; shiftId: string }
+  ): Promise<string> {
+    if (!input.nominal || input.nominal <= 0 || !Number.isInteger(input.nominal)) {
+      throw new AppError('Nominal transaksi harus bilangan bulat lebih besar dari Rp0.');
+    }
+
+    if (input.fee < 0 || !Number.isInteger(input.fee)) {
+      throw new AppError('Biaya admin harus bilangan bulat >= Rp0.');
+    }
+
+    const paymentStatus = input.paymentStatus || 'lunas';
+    if (paymentStatus === 'hutang') {
+      if (!input.customerId) {
+        throw new AppError('Transaksi dengan status Hutang wajib memilih atau mengisi nama pelanggan.');
+      }
+    }
+
+    // Tentukan paymentAccountId (default akun Kas bila tidak ditentukan)
+    let paymentAccountId = input.accountId;
+    if (!paymentAccountId) {
+      const kasAccount = await db.accounts.where('type').equals('kas').first();
+      if (!kasAccount) {
+        throw new AppError('Belum ada akun Kas. Tambahkan akun Kas terlebih dahulu.');
+      }
+      paymentAccountId = kasAccount.id;
+    }
+
+    const transactionId = uuidv4();
+    const now = Date.now();
+    const date = input.date || now;
+
+    // Ambil modal & jual snapshot jika transaksi memiliki produk
+    let modal = 0;
+    let hargaJual = input.nominal;
+    let productNameSnapshot = input.layanan;
+
+    const itemsToSave: TransactionItem[] = [];
+
+    if (input.productId) {
+      const product = await db.products.get(input.productId);
+      if (!product) {
+        throw new AppError('Produk master tidak ditemukan.');
+      }
+      const pricing = await productService.getModalAndPrice(input.productId);
+      modal = pricing.modal;
+      hargaJual = pricing.hargaJual;
+      productNameSnapshot = product.name;
+
+      itemsToSave.push({
+        id: uuidv4(),
+        transactionId,
+        productId: input.productId,
+        productNameSnapshot,
+        qty: 1,
+        modalSnapshot: modal,
+        hargaJualSnapshot: hargaJual,
+        subtotal: hargaJual,
+      });
+    } else if (input.cartItems && input.cartItems.length > 0) {
+      // Keranjang multi-item
+      let totalModal = 0;
+      let totalJual = 0;
+
+      for (const item of input.cartItems) {
+        const product = await db.products.get(item.productId);
+        if (!product) continue;
+        const pricing = await productService.getModalAndPrice(item.productId);
+        const qty = item.qty || 1;
+        totalModal += pricing.modal * qty;
+        totalJual += pricing.hargaJual * qty;
+
+        itemsToSave.push({
+          id: uuidv4(),
+          transactionId,
+          productId: item.productId,
+          productNameSnapshot: product.name,
+          qty,
+          modalSnapshot: pricing.modal,
+          hargaJualSnapshot: pricing.hargaJual,
+          subtotal: pricing.hargaJual * qty,
+        });
+      }
+
+      modal = totalModal;
+      hargaJual = totalJual;
+    }
+
+    // Hitung delta saldo
+    const deltas = balanceService.computeDeltas({
+      layanan: input.layanan,
+      sourceAccountId: input.sourceAccountId,
+      destAccountId: input.destAccountId,
+      paymentAccountId,
+      nominal: input.nominal,
+      modal,
+      hargaJual,
+      fee: input.fee,
+      feePaidBy: input.feePaidBy,
+    });
+
+    const txRecord: Transaction = {
+      id: transactionId,
+      layanan: input.layanan,
+      shiftId: opts.shiftId,
+      userId: opts.actorUserId,
+      accountId: paymentAccountId,
+      sourceAccountId: input.sourceAccountId,
+      destAccountId: input.destAccountId,
+      nominal: input.nominal,
+      fee: input.fee,
+      feePaidBy: input.feePaidBy,
+      feeRuleId: input.feeRuleId,
+      feeManualOverride: input.feeManualOverride,
+      paymentMethod: input.paymentMethod,
+      paymentStatus,
+      date,
+      note: input.note?.trim(),
+      referenceNo: input.referenceNo?.trim(),
+      photoPath: input.photoPath,
+      customerId: input.customerId,
+      status: 'ok',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Jalankan seluruh penyimpanan dalam Dexie transaction (atomik)
+    await db.transaction(
+      'rw',
+      [
+        db.transactions,
+        db.transactionItems,
+        db.accountLedger,
+        db.products,
+        db.stockMovements,
+        db.customers,
+        db.auditLogs,
+      ],
+      async () => {
+        // 1. Simpan kepala transaksi
+        await db.transactions.add(txRecord);
+
+        // 2. Simpan item-item transaksi
+        if (itemsToSave.length > 0) {
+          await db.transactionItems.bulkAdd(itemsToSave);
+        }
+
+        // 3. Terapkan saldo mutasi (hanya jika transaksi statusnya bukan hutang tanpa penerimaan kas)
+        // Jika hutang, uang belum masuk ke kasir; delta akun pembayaran ditahan atau masuk piutang
+        // Tetapi untuk MVP: pergerakan sumber dana tetap terjadi (mis. pulsa terpotong dari server, atau uang transfer tetap keluar dari bank)
+        // yang belum diterima kasir adalah sisi kasnya
+        if (paymentStatus === 'hutang') {
+          // Hanya delta sumber yang keluar
+          const sourceDeltas = deltas.filter((d) => d.accountId === input.sourceAccountId);
+          if (sourceDeltas.length > 0) {
+            await balanceService.applyDeltas({ transactionId, deltas: sourceDeltas, multiplier: 1 });
+          }
+
+          // Tambah hutang ke akun customer
+          const customer = await db.customers.get(input.customerId!);
+          if (customer) {
+            await db.customers.update(input.customerId!, {
+              balanceHutang: customer.balanceHutang + input.nominal + (input.feePaidBy === 'cash' ? input.fee : 0),
+            });
+          }
+        } else {
+          // Status lunas: terapkan semua delta mutasi
+          await balanceService.applyDeltas({ transactionId, deltas, multiplier: 1 });
+        }
+
+        // 4. Kurangi stok barang jika ada produk fisik
+        for (const item of itemsToSave) {
+          await stockService.adjustStock({
+            productId: item.productId,
+            qtyChange: -item.qty,
+            reason: 'jual',
+            transactionId,
+            shiftId: opts.shiftId,
+            actorUserId: opts.actorUserId,
+          });
+        }
+
+        // 5. Audit log
+        await db.auditLogs.add({
+          id: uuidv4(),
+          actorUserId: opts.actorUserId,
+          action: 'tambah_transaksi',
+          entityType: 'transaction',
+          entityId: transactionId,
+          detail: JSON.stringify({
+            layanan: input.layanan,
+            nominal: input.nominal,
+            fee: input.fee,
+            paymentStatus,
+          }),
+          createdAt: now,
+        });
+      }
+    );
+
+    return transactionId;
+  }
+
+  /**
+   * Batalkan transaksi (VOID) — BUKAN HAPUS.
+   * Mengembalikan mutasi saldo (multiplier -1) dan mengembalikan stok fisik (+qty).
+   */
+  public async voidTransaction(
+    transactionId: string,
+    opts: { reason: string; actorUserId: string }
+  ): Promise<void> {
+    const trimmedReason = opts.reason?.trim();
+    if (!trimmedReason || trimmedReason.length < 3) {
+      throw new AppError('Alasan pembatalan (void) transaksi wajib diisi minimal 3 karakter.');
+    }
+
+    const tx = await db.transactions.get(transactionId);
+    if (!tx) {
+      throw new AppError('Transaksi tidak ditemukan.');
+    }
+
+    if (tx.status === 'void') {
+      throw new AppError('Transaksi ini sudah dibatalkan sebelumnya.');
+    }
+
+    const now = Date.now();
+    const items = await db.transactionItems.where('transactionId').equals(transactionId).toArray();
+
+    await db.transaction(
+      'rw',
+      [
+        db.transactions,
+        db.accountLedger,
+        db.products,
+        db.stockMovements,
+        db.customers,
+        db.auditLogs,
+      ],
+      async () => {
+        // 1. Ubah status transaksi menjadi void (TIDAK PERNAH DIHAPUS)
+        await db.transactions.update(transactionId, {
+          status: 'void',
+          voidReason: trimmedReason,
+          voidBy: opts.actorUserId,
+          voidAt: now,
+          updatedAt: now,
+        });
+
+        // 2. Balik saldo ledger terkait
+        const existingLedgers = await db.accountLedger.where('transactionId').equals(transactionId).toArray();
+        if (existingLedgers.length > 0) {
+          const reverseRecords = existingLedgers.map((l) => ({
+            id: uuidv4(),
+            accountId: l.accountId,
+            transactionId,
+            kind: l.kind,
+            delta: -l.delta, // Balik arah delta
+            note: `Void: ${trimmedReason}`,
+            createdAt: now,
+          }));
+          await db.accountLedger.bulkAdd(reverseRecords);
+        }
+
+        // 3. Kembalikan stok fisik jika ada
+        for (const item of items) {
+          await stockService.adjustStock({
+            productId: item.productId,
+            qtyChange: item.qty, // +qty untuk mengembalikan
+            reason: 'void',
+            transactionId,
+            actorUserId: opts.actorUserId,
+          });
+        }
+
+        // 4. Koreksi hutang pelanggan jika transaksi asal berstatus hutang
+        if (tx.paymentStatus === 'hutang' && tx.customerId) {
+          const customer = await db.customers.get(tx.customerId);
+          if (customer) {
+            const debtAmount = tx.nominal + (tx.feePaidBy === 'cash' ? tx.fee : 0);
+            await db.customers.update(tx.customerId, {
+              balanceHutang: Math.max(0, customer.balanceHutang - debtAmount),
+            });
+          }
+        }
+
+        // 5. Jejak audit
+        await db.auditLogs.add({
+          id: uuidv4(),
+          actorUserId: opts.actorUserId,
+          action: 'void_transaksi',
+          entityType: 'transaction',
+          entityId: transactionId,
+          detail: JSON.stringify({
+            layanan: tx.layanan,
+            nominal: tx.nominal,
+            alasan: trimmedReason,
+          }),
+          createdAt: now,
+        });
+      }
+    );
+  }
+
+  public async listTransactions(params?: {
+    from?: number;
+    to?: number;
+    layanan?: string;
+    accountId?: string;
+    shiftId?: string;
+    status?: 'ok' | 'void';
+    query?: string;
+  }): Promise<Transaction[]> {
+    let list = await db.transactions.toArray();
+
+    if (params?.from) {
+      list = list.filter((t) => t.date >= params.from!);
+    }
+    if (params?.to) {
+      list = list.filter((t) => t.date <= params.to!);
+    }
+    if (params?.layanan) {
+      list = list.filter((t) => t.layanan === params.layanan);
+    }
+    if (params?.accountId) {
+      list = list.filter((t) => t.accountId === params.accountId || t.sourceAccountId === params.accountId);
+    }
+    if (params?.shiftId) {
+      list = list.filter((t) => t.shiftId === params.shiftId);
+    }
+    if (params?.status) {
+      list = list.filter((t) => t.status === params.status);
+    }
+    if (params?.query) {
+      const q = params.query.toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.layanan.toLowerCase().includes(q) ||
+          (t.note && t.note.toLowerCase().includes(q)) ||
+          (t.referenceNo && t.referenceNo.toLowerCase().includes(q))
+      );
+    }
+
+    list.sort((a, b) => b.date - a.date);
+    return list;
+  }
+
+  public async getTransaction(id: string): Promise<Transaction | undefined> {
+    return await db.transactions.get(id);
+  }
+
+  public async getItems(transactionId: string): Promise<TransactionItem[]> {
+    return await db.transactionItems.where('transactionId').equals(transactionId).toArray();
+  }
+}
+
+export const transactionService = new TransactionService();

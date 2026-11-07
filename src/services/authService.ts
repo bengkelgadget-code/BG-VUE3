@@ -136,6 +136,36 @@ export class AuthServiceImpl {
     });
   }
 
+  public async changePin(userId: string, oldPin: string, newPin: string): Promise<void> {
+    const user = await db.users.get(userId);
+    if (!user) {
+      throw new AppError('Pengguna tidak ditemukan.');
+    }
+
+    const isValid = await this.verifyPin(userId, oldPin);
+    if (!isValid) {
+      throw new AppError('PIN lama tidak cocok.');
+    }
+
+    const trimmedNew = newPin.trim();
+    if (!trimmedNew || trimmedNew.length < 4) {
+      throw new AppError('PIN baru minimal 4 angka.');
+    }
+
+    const newHash = await this.hashPin(trimmedNew);
+    await db.users.update(userId, { pinHash: newHash });
+
+    await db.auditLogs.add({
+      id: uuidv4(),
+      actorUserId: userId,
+      action: 'ubah_pin',
+      entityType: 'user',
+      entityId: userId,
+      detail: JSON.stringify({ action: 'ubah_pin' }),
+      createdAt: Date.now(),
+    });
+  }
+
   public async logout(): Promise<void> {
     this.currentActiveUser = null;
     if (typeof localStorage !== 'undefined') {

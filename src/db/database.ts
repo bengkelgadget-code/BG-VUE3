@@ -39,7 +39,7 @@ export class BukuKonterDB extends Dexie {
       accountLedger: 'id, accountId, transactionId, createdAt',
       products: 'id, category, isActive, externalProductRef',
       adminFeeRules: 'id, layanan, groupId, isActive',
-      transactions: 'id, layanan, shiftId, userId, accountId, sourceAccountId, status, date',
+      transactions: 'id, layanan, shiftId, userId, accountId, sourceAccountId, customerId, paymentStatus, status, date',
       transactionItems: 'id, transactionId, productId',
       shifts: 'id, userId, status, openedAt',
       shiftHandovers: 'id, shiftId, fromUserId, toUserId',

@@ -4,6 +4,14 @@
       <h2 class="page-title">Pengaturan</h2>
     </div>
 
+    <!-- Alert / Toast -->
+    <div v-if="successMessage" class="feedback-banner success">
+      {{ successMessage }}
+    </div>
+    <div v-if="errorMessage" class="feedback-banner error">
+      {{ errorMessage }}
+    </div>
+
     <div class="settings-list">
       <!-- Section Petugas & Keamanan -->
       <div class="settings-card">
@@ -14,6 +22,34 @@
             <span class="user-role-badge">{{ authStore.currentUser?.role.toUpperCase() }}</span>
           </div>
           <button class="btn-logout" @click="handleLogout">Keluar</button>
+        </div>
+
+        <div class="pin-change-box">
+          <button class="btn-secondary-sm" @click="showPinModal = !showPinModal">
+            {{ showPinModal ? 'Tutup Ubah PIN' : 'Ubah PIN Petugas' }}
+          </button>
+
+          <div v-if="showPinModal" class="pin-form">
+            <input
+              v-model="oldPin"
+              type="password"
+              maxlength="6"
+              inputmode="numeric"
+              placeholder="PIN Lama (6 angka)"
+              class="pin-input"
+            />
+            <input
+              v-model="newPin"
+              type="password"
+              maxlength="6"
+              inputmode="numeric"
+              placeholder="PIN Baru (6 angka)"
+              class="pin-input"
+            />
+            <button class="btn-primary-sm" :disabled="isSubmittingPin" @click="handleSavePin">
+              Simpan PIN Baru
+            </button>
+          </div>
         </div>
       </div>
 
@@ -35,8 +71,39 @@
           </router-link>
           <router-link to="/customers" class="menu-item">
             <span class="item-title">Master Pelanggan</span>
-            <span class="item-desc">Data pelanggan & hutang piutang</span>
+            <span class="item-desc">Data pelanggan & piutang</span>
           </router-link>
+        </div>
+      </div>
+
+      <!-- Section Backup & Ekspor Data (Owner/Admin Saja) -->
+      <div v-if="authStore.isAdmin" class="settings-card">
+        <h3 class="card-title">Ekspor & Cadangan Data</h3>
+        <p class="section-desc">Unduh berkas transaksi untuk pembukuan Excel atau amankan database lokal.</p>
+
+        <div class="action-buttons-list">
+          <button class="btn-action-outline" @click="exportTransactionsCsv">
+            📥 Ekspor CSV Transaksi (Excel)
+          </button>
+          <button class="btn-action-outline" @click="exportProductsCsv">
+            📥 Ekspor CSV Master Produk
+          </button>
+          <button class="btn-action-outline" @click="downloadJsonBackup">
+            💾 Unduh Cadangan Penuh (JSON)
+          </button>
+
+          <div class="restore-wrapper">
+            <label class="btn-action-danger" for="restore-file-input">
+              🔄 Pulihkan Cadangan (Restore)
+            </label>
+            <input
+              id="restore-file-input"
+              type="file"
+              accept=".json"
+              class="hidden-file-input"
+              @change="handleFileRestore"
+            />
+          </div>
         </div>
       </div>
 
@@ -74,26 +141,143 @@
         <p class="app-statement">
           Aplikasi ini adalah <strong>murni pencatatan</strong> (buku kas & ledger catatan). Aplikasi ini tidak menjalankan transaksi pulsa/transfer langsung dan tidak mengubah saldo live di server pulsa, bank, atau e-wallet.
         </p>
-        <div class="app-version-badge">Versi {{ APP_VERSION }} (Fase 0 Fondasi)</div>
+        <div class="app-version-badge">Versi {{ APP_VERSION }} (Fase 1 MVP)</div>
       </div>
     </div>
   </AppScaffold>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AppScaffold from '../components/AppScaffold.vue';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { backupService } from '../services/backupService';
+import { authService } from '../services/authService';
 import { APP_VERSION } from '../core/constants';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const settingsStore = useSettingsStore();
 
+const showPinModal = ref(false);
+const oldPin = ref('');
+const newPin = ref('');
+const isSubmittingPin = ref(false);
+const successMessage = ref('');
+const errorMessage = ref('');
+
+function showSuccess(msg: string) {
+  successMessage.value = msg;
+  errorMessage.value = '';
+  setTimeout(() => {
+    successMessage.value = '';
+  }, 4000);
+}
+
+function showError(msg: string) {
+  errorMessage.value = msg;
+  successMessage.value = '';
+}
+
 async function handleLogout() {
   await authStore.logout();
   router.replace('/login');
+}
+
+async function handleSavePin() {
+  if (!authStore.currentUser) return;
+  if (oldPin.value.length < 4 || newPin.value.length < 4) {
+    showError('PIN minimal harus 4-6 angka.');
+    return;
+  }
+  isSubmittingPin.value = true;
+  try {
+    await authService.changePin(authStore.currentUser.id, oldPin.value, newPin.value);
+    showSuccess('PIN berhasil diperbarui.');
+    oldPin.value = '';
+    newPin.value = '';
+    showPinModal.value = false;
+  } catch (err: unknown) {
+    showError((err as Error).message);
+  } finally {
+    isSubmittingPin.value = false;
+  }
+}
+
+function triggerDownload(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function exportTransactionsCsv() {
+  try {
+    const csv = await backupService.exportCsv();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    triggerDownload(csv, `transaksi_buku_konter_${dateStr}.csv`, 'text/csv;charset=utf-8;');
+    showSuccess('CSV Transaksi berhasil diekspor.');
+  } catch (err: unknown) {
+    showError('Gagal ekspor CSV: ' + (err as Error).message);
+  }
+}
+
+async function exportProductsCsv() {
+  try {
+    const csv = await backupService.exportMastersCsv();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    triggerDownload(csv, `master_produk_${dateStr}.csv`, 'text/csv;charset=utf-8;');
+    showSuccess('CSV Master Produk berhasil diekspor.');
+  } catch (err: unknown) {
+    showError('Gagal ekspor produk: ' + (err as Error).message);
+  }
+}
+
+async function downloadJsonBackup() {
+  try {
+    const json = await backupService.createBackup();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    triggerDownload(json, `backup_buku_konter_${dateStr}.json`, 'application/json');
+    showSuccess('Cadangan database berhasil diunduh.');
+  } catch (err: unknown) {
+    showError('Gagal buat cadangan: ' + (err as Error).message);
+  }
+}
+
+async function handleFileRestore(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  const confirm1 = confirm('PERINGATAN: Memulihkan cadangan akan menimpa seluruh data transaksi, akun, dan produk saat ini. Lanjutkan?');
+  if (!confirm1) {
+    target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (evt) => {
+    try {
+      const content = evt.target?.result as string;
+      await backupService.restoreBackup(content);
+      showSuccess('Data berhasil dipulihkan!');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err: unknown) {
+      showError('Gagal memulihkan cadangan: ' + (err as Error).message);
+    } finally {
+      target.value = '';
+    }
+  };
+  reader.readAsText(file);
 }
 </script>
 
@@ -106,109 +290,233 @@ async function handleLogout() {
   font-weight: 700;
   color: var(--text-main);
 }
+
+.feedback-banner {
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.feedback-banner.success {
+  background: #ECFDF5;
+  border: 1px solid #A7F3D0;
+  color: #065F46;
+}
+.feedback-banner.error {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #991B1B;
+}
+
 .settings-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 .settings-card {
-  background: var(--surface-card);
-  padding: 16px;
-  border-radius: var(--radius-card);
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  padding: 16px;
 }
 .card-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text-main);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
+.section-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
 .user-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 12px;
 }
 .user-info {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
 }
 .user-name {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-main);
 }
 .user-role-badge {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  color: var(--color-primary);
+  padding: 2px 6px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary);
+  border-radius: 6px;
 }
 .btn-logout {
-  padding: 8px 14px;
-  border-radius: var(--radius-btn);
-  border: 1px solid var(--color-danger);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
   background: transparent;
   color: var(--color-danger);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
-.menu-grid {
+
+.pin-change-box {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+.btn-secondary-sm {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-canvas);
+  color: var(--text-main);
+  font-size: 12px;
+  cursor: pointer;
+}
+.pin-form {
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+}
+.pin-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  color: var(--text-main);
+  font-size: 14px;
+}
+.btn-primary-sm {
+  padding: 8px;
+  border-radius: 8px;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 .menu-item {
   display: flex;
   flex-direction: column;
-  padding: 10px 12px;
-  background: var(--surface-card-subtle);
-  border-radius: var(--radius-btn);
+  padding: 12px;
+  background: var(--bg-canvas);
+  border-radius: 12px;
   text-decoration: none;
-  transition: background-color var(--transition-fast);
+  transition: background 0.15s ease;
 }
 .menu-item:active {
-  background: var(--border-color);
+  background: rgba(37, 99, 235, 0.08);
 }
 .item-title {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-main);
 }
 .item-desc {
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
+
+.action-buttons-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.btn-action-outline {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-canvas);
+  color: var(--text-main);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn-action-outline:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+.restore-wrapper {
+  margin-top: 4px;
+}
+.btn-action-danger {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #FECACA;
+  background: #FEF2F2;
+  color: #B91C1C;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.hidden-file-input {
+  display: none;
+}
+
 .theme-selector {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
   gap: 8px;
 }
 .theme-btn {
-  padding: 10px;
-  border-radius: var(--radius-btn);
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
   border: 1px solid var(--border-color);
-  background: var(--surface-card-subtle);
+  background: var(--bg-canvas);
   color: var(--text-main);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 .theme-btn.active {
-  background: var(--color-primary);
-  color: #ffffff;
-  border-color: var(--color-primary);
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.info-card {
+  background: var(--bg-canvas);
+  border: 1px dashed var(--border-color);
 }
 .app-statement {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   line-height: 1.5;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .app-version-badge {
+  display: inline-block;
   font-size: 11px;
-  color: var(--text-muted);
   font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
 }
 </style>
