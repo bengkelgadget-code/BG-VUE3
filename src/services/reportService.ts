@@ -4,6 +4,8 @@ import type { Product, Account } from '../db/types';
 export interface CategoryTotal {
   label: string;
   total: number;
+  omzet?: number;
+  laba?: number;
 }
 
 export interface PeriodTotal {
@@ -98,30 +100,68 @@ export class ReportService {
     return laba;
   }
 
+  public async transactionCount(from: number, to: number, opts?: { shiftId?: string }): Promise<number> {
+    const txs = await this.getFilteredTransactions(from, to, opts?.shiftId);
+    return txs.length;
+  }
+
   public async byLayanan(from: number, to: number): Promise<CategoryTotal[]> {
     const txs = await this.getFilteredTransactions(from, to);
-    const map: Record<string, number> = {};
+    const map: Record<string, { total: number; omzet: number; laba: number }> = {};
 
     for (const t of txs) {
-      map[t.layanan] = (map[t.layanan] || 0) + 1;
+      if (!map[t.layanan]) {
+        map[t.layanan] = { total: 0, omzet: 0, laba: 0 };
+      }
+      const entry = map[t.layanan]!;
+      entry.total += 1;
+
+      if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(t.layanan)) {
+        entry.omzet += t.fee;
+        entry.laba += t.fee;
+      } else if (t.layanan === 'pemasukan_lain') {
+        entry.omzet += t.nominal;
+        entry.laba += t.nominal;
+      } else if (t.layanan === 'operasional') {
+        entry.omzet += t.nominal;
+        entry.laba -= t.nominal;
+      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider'].includes(t.layanan)) {
+        entry.omzet += t.nominal;
+        const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
+        let modal = 0;
+        for (const item of items) {
+          modal += item.modalSnapshot * item.qty;
+        }
+        entry.laba += t.nominal - modal;
+      }
     }
 
-    return Object.entries(map).map(([label, total]) => ({ label, total }));
+    return Object.entries(map).map(([label, val]) => ({
+      label,
+      total: val.total,
+      omzet: val.omzet,
+      laba: val.laba,
+    }));
   }
 
   public async byProduct(from: number, to: number): Promise<CategoryTotal[]> {
     const txs = await this.getFilteredTransactions(from, to);
-    const map: Record<string, number> = {};
+    const map: Record<string, { total: number; laba: number }> = {};
 
     for (const t of txs) {
       const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
       for (const item of items) {
-        map[item.productNameSnapshot] = (map[item.productNameSnapshot] || 0) + item.qty;
+        if (!map[item.productNameSnapshot]) {
+          map[item.productNameSnapshot] = { total: 0, laba: 0 };
+        }
+        const entry = map[item.productNameSnapshot]!;
+        entry.total += item.qty;
+        entry.laba += (item.hargaJualSnapshot - item.modalSnapshot) * item.qty;
       }
     }
 
     return Object.entries(map)
-      .map(([label, total]) => ({ label, total }))
+      .map(([label, val]) => ({ label, total: val.total, laba: val.laba }))
       .sort((a, b) => b.total - a.total);
   }
 
@@ -165,15 +205,38 @@ export class ReportService {
 
   public async byKasir(from: number, to: number): Promise<CategoryTotal[]> {
     const txs = await this.getFilteredTransactions(from, to);
-    const map: Record<string, number> = {};
+    const map: Record<string, { total: number; laba: number }> = {};
 
     for (const t of txs) {
       const user = await db.users.get(t.userId);
       const name = user?.name || t.userId;
-      map[name] = (map[name] || 0) + 1;
+      if (!map[name]) {
+        map[name] = { total: 0, laba: 0 };
+      }
+      const entry = map[name]!;
+      entry.total += 1;
+
+      if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(t.layanan)) {
+        entry.laba += t.fee;
+      } else if (t.layanan === 'pemasukan_lain') {
+        entry.laba += t.nominal;
+      } else if (t.layanan === 'operasional') {
+        entry.laba -= t.nominal;
+      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider'].includes(t.layanan)) {
+        const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
+        let modal = 0;
+        for (const item of items) {
+          modal += item.modalSnapshot * item.qty;
+        }
+        entry.laba += t.nominal - modal;
+      }
     }
 
-    return Object.entries(map).map(([label, total]) => ({ label, total }));
+    return Object.entries(map).map(([label, val]) => ({
+      label,
+      total: val.total,
+      laba: val.laba,
+    }));
   }
 
   public async lowStockProducts(): Promise<Product[]> {
