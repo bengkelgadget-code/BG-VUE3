@@ -7,6 +7,7 @@ export interface ReceivableSummary {
   customerName: string;
   totalHutang: number;
   oldestDate: number;
+  debtAgeDays: number;
   phone?: string;
 }
 
@@ -17,6 +18,7 @@ export class ReceivableService {
   public async listReceivables(): Promise<ReceivableSummary[]> {
     const customers = await db.customers.toArray();
     const result: ReceivableSummary[] = [];
+    const now = Date.now();
 
     for (const c of customers) {
       if (c.balanceHutang > 0) {
@@ -28,12 +30,15 @@ export class ReceivableService {
           .sortBy('date');
 
         const oldestDate = txList.length > 0 && txList[0] ? txList[0].date : c.createdAt;
+        const diffMs = Math.max(0, now - oldestDate);
+        const debtAgeDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
         result.push({
           customerId: c.id,
           customerName: c.name,
           totalHutang: c.balanceHutang,
           oldestDate,
+          debtAgeDays,
           phone: c.phone,
         });
       }
@@ -44,7 +49,85 @@ export class ReceivableService {
   }
 
   /**
-   * Pelunasan Penuh (MVP Simpel):
+   * Pelunasan Sebagian / Cicilan (Fase 2 - v1.1):
+   * Pelanggan membayar sebagian nominal hutang.
+   */
+  public async payPartial(
+    customerId: string,
+    paidAmount: number,
+    paidToAccountId: string,
+    date: number,
+    actorUserId: string = 'system'
+  ): Promise<{ remainingDebt: number }> {
+    const customer = await db.customers.get(customerId);
+    if (!customer) {
+      throw new AppError('Data pelanggan tidak ditemukan.');
+    }
+    const account = await db.accounts.get(paidToAccountId);
+    if (!account) {
+      throw new AppError('Akun penerima pembayaran tidak ditemukan.');
+    }
+    if (paidAmount <= 0 || !Number.isInteger(paidAmount)) {
+      throw new AppError('Nominal pembayaran cicilan harus bilangan bulat > 0.');
+    }
+    if (paidAmount > customer.balanceHutang) {
+      throw new AppError(`Nominal pembayaran melebihi total hutang (${customer.balanceHutang}).`);
+    }
+
+    const remainingDebt = customer.balanceHutang - paidAmount;
+
+    await db.transaction('rw', [db.customers, db.accountLedger, db.auditLogs], async () => {
+      await db.customers.update(customerId, {
+        balanceHutang: remainingDebt,
+      });
+
+      await db.accountLedger.add({
+        id: uuidv4(),
+        accountId: paidToAccountId,
+        kind: 'pokok',
+        delta: paidAmount,
+        note: `Cicilan piutang pelanggan ${customer.name} (sisa: Rp ${remainingDebt.toLocaleString('id-ID')})`,
+        createdAt: date,
+      });
+
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId,
+        action: 'cicilan_piutang',
+        entityType: 'customer',
+        entityId: customerId,
+        detail: JSON.stringify({
+          customerName: customer.name,
+          bayar: paidAmount,
+          sisa: remainingDebt,
+          paidToAccount: account.name,
+        }),
+        createdAt: date,
+      });
+    });
+
+    return { remainingDebt };
+  }
+
+  /**
+   * Buat tautan pengingat WhatsApp
+   */
+  public generateWhatsAppReminder(summary: ReceivableSummary, counterName: string = 'Buku Konter'): string {
+    const phone = (summary.phone || '').replace(/[^\d]/g, '');
+    let formattedPhone = phone;
+    if (phone.startsWith('08')) {
+      formattedPhone = '628' + phone.substring(2);
+    }
+    const text = encodeURIComponent(
+      `Halo Kak ${summary.customerName}, salam dari ${counterName}.\n` +
+      `Mengingatkan catatan piutang sebesar Rp ${summary.totalHutang.toLocaleString('id-ID')} (sudah ${summary.debtAgeDays} hari).\n` +
+      `Bisa dilunasi langsung di konter atau via transfer. Terima kasih banyak ya Kak!`
+    );
+    return `https://wa.me/${formattedPhone}?text=${text}`;
+  }
+
+  /**
+   * Pelunasan Penuh:
    * Pelanggan membayar seluruh sisa hutangnya sekaligus.
    * Cicilan / pelunasan sebagian DILARANG di MVP (v1.1).
    */

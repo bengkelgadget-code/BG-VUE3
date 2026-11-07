@@ -7,7 +7,7 @@
       </div>
 
       <p class="section-intro">
-        Versi simpel MVP: Transaksi berstatus Hutang tercatat di sini dan dapat dilunasi penuh saat pelanggan membayar.
+        Daftar tagihan bon pelanggan konter. Mendukung pelunasan penuh, cicilan bertahap, dan pengingat WhatsApp.
       </p>
 
       <EmptyState
@@ -19,31 +19,67 @@
       <div v-else class="receivable-list">
         <div v-for="r in receivables" :key="r.customerId" class="debt-card">
           <div class="debt-main">
-            <span class="debt-customer-name">{{ r.customerName }}</span>
+            <div class="customer-row">
+              <span class="debt-customer-name">{{ r.customerName }}</span>
+              <span class="age-badge" :class="r.debtAgeDays > 7 ? 'old-debt' : ''">
+                {{ r.debtAgeDays }} hari
+              </span>
+            </div>
             <span v-if="r.phone" class="debt-phone">HP: {{ r.phone }}</span>
-            <span class="debt-date">Tertua sejak: {{ formatTanggalWita(r.oldestDate) }}</span>
+            <span class="debt-date">Sejak: {{ formatTanggalWita(r.oldestDate) }}</span>
           </div>
 
           <div class="debt-actions-col">
             <span class="debt-amount money-display">{{ formatRupiah(r.totalHutang) }}</span>
-            <button class="btn-pay-full" @click="openPayModal(r)">
-              Lunas Penuh
-            </button>
+            <div class="btn-group-actions">
+              <button class="btn-pay-full" @click="openPayModal(r, 'full')">
+                Lunas Penuh
+              </button>
+              <button class="btn-pay-partial" @click="openPayModal(r, 'partial')">
+                Cicil
+              </button>
+              <a
+                v-if="r.phone"
+                :href="getWhatsAppLink(r)"
+                target="_blank"
+                class="btn-wa-reminder"
+                title="Kirim pengingat WhatsApp"
+              >
+                WA
+              </a>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Modal Pelunasan Penuh -->
+      <!-- Modal Pembayaran (Lunas / Cicil) -->
       <div v-if="selectedDebt" class="modal-backdrop">
         <div class="modal-card">
-          <h4 class="modal-title">Pelunasan Penuh Piutang</h4>
+          <h4 class="modal-title">
+            {{ payMode === 'full' ? 'Pelunasan Penuh Piutang' : 'Pembayaran Cicilan Piutang' }}
+          </h4>
           <p class="modal-desc">
-            Pelanggan <strong>{{ selectedDebt.customerName }}</strong> akan melunasi seluruh sisa hutang sebesar:
+            Pelanggan <strong>{{ selectedDebt.customerName }}</strong> (Total Hutang: {{ formatRupiah(selectedDebt.totalHutang) }}).
           </p>
-          <div class="modal-amount money-display">{{ formatRupiah(selectedDebt.totalHutang) }}</div>
+
+          <div v-if="payMode === 'full'" class="modal-amount money-display">
+            {{ formatRupiah(selectedDebt.totalHutang) }}
+          </div>
+          <div v-else class="form-group">
+            <label class="form-label">Nominal Cicilan (Rp):</label>
+            <input
+              v-model.number="partialAmount"
+              type="number"
+              inputmode="numeric"
+              class="form-input"
+              :max="selectedDebt.totalHutang"
+              placeholder="Masukkan jumlah yang dibayarkan"
+              required
+            />
+          </div>
 
           <div class="form-group">
-            <label class="form-label">Uang Pelunasan Diterima Di Akun:</label>
+            <label class="form-label">Uang Diterima Di Akun:</label>
             <select v-model="targetAccountId" class="form-select" required>
               <option v-for="acc in availablePaymentAccounts" :key="acc.id" :value="acc.id">
                 {{ acc.name }} ({{ acc.type }})
@@ -59,10 +95,10 @@
             <button class="btn-cancel" @click="selectedDebt = null">Batal</button>
             <button
               class="btn-confirm-pay"
-              :disabled="isPaying || !targetAccountId"
-              @click="handlePayFull"
+              :disabled="isPaying || !targetAccountId || (payMode === 'partial' && (!partialAmount || partialAmount <= 0))"
+              @click="handlePaymentSubmit"
             >
-              {{ isPaying ? 'Memproses...' : 'Konfirmasi Lunas' }}
+              {{ isPaying ? 'Memproses...' : (payMode === 'full' ? 'Konfirmasi Lunas' : 'Simpan Cicilan') }}
             </button>
           </div>
         </div>
@@ -80,13 +116,14 @@ import { db } from '../db/database';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
 import type { Account } from '../db/types';
-import { AppError } from '../core/errors';
 
 const authStore = useAuthStore();
 
 const receivables = ref<ReceivableSummary[]>([]);
 const availablePaymentAccounts = ref<Account[]>([]);
 const selectedDebt = ref<ReceivableSummary | null>(null);
+const payMode = ref<'full' | 'partial'>('full');
+const partialAmount = ref<number>(0);
 const targetAccountId = ref<string>('');
 const payError = ref<string>('');
 const isPaying = ref<boolean>(false);
@@ -95,83 +132,99 @@ const totalPiutang = computed(() =>
   receivables.value.reduce((sum, r) => sum + r.totalHutang, 0)
 );
 
-onMounted(async () => {
-  await loadData();
-});
+function getWhatsAppLink(r: ReceivableSummary): string {
+  return receivableService.generateWhatsAppReminder(r, 'Buku Konter');
+}
 
-async function loadData() {
-  receivables.value = await receivableService.listReceivables();
-  availablePaymentAccounts.value = await db.accounts
-    .filter((a) => a.isActive && (a.type === 'kas' || a.type === 'bank' || a.type === 'ewallet'))
-    .toArray();
+function openPayModal(r: ReceivableSummary, mode: 'full' | 'partial') {
+  selectedDebt.value = r;
+  payMode.value = mode;
+  partialAmount.value = mode === 'full' ? r.totalHutang : 0;
+  payError.value = '';
 
-  const defaultKas = availablePaymentAccounts.value.find((a) => a.type === 'kas');
-  if (defaultKas) {
-    targetAccountId.value = defaultKas.id;
+  const kasAccount = availablePaymentAccounts.value.find((a) => a.type === 'kas');
+  if (kasAccount) {
+    targetAccountId.value = kasAccount.id;
+  } else if (availablePaymentAccounts.value.length > 0) {
+    targetAccountId.value = availablePaymentAccounts.value[0]!.id;
   }
 }
 
-function openPayModal(r: ReceivableSummary) {
-  selectedDebt.value = r;
-  payError.value = '';
-}
-
-async function handlePayFull() {
+async function handlePaymentSubmit() {
   if (!selectedDebt.value || !targetAccountId.value) return;
-  payError.value = '';
+
   isPaying.value = true;
+  payError.value = '';
+
   try {
-    await receivableService.markPaidFull(
-      selectedDebt.value.customerId,
-      targetAccountId.value,
-      Date.now(),
-      authStore.currentUser?.id || 'system'
-    );
+    const actorId = authStore.currentUser?.id || 'system';
+    const now = Date.now();
+
+    if (payMode.value === 'full') {
+      await receivableService.markPaidFull(
+        selectedDebt.value.customerId,
+        targetAccountId.value,
+        now,
+        actorId
+      );
+    } else {
+      await receivableService.payPartial(
+        selectedDebt.value.customerId,
+        partialAmount.value,
+        targetAccountId.value,
+        now,
+        actorId
+      );
+    }
+
     selectedDebt.value = null;
     await loadData();
   } catch (err: unknown) {
-    if (err instanceof AppError) {
-      payError.value = err.message;
-    } else {
-      payError.value = 'Gagal memproses pelunasan piutang.';
-    }
+    payError.value = (err as Error).message;
   } finally {
     isPaying.value = false;
   }
 }
+
+async function loadData() {
+  receivables.value = await receivableService.listReceivables();
+  const allAccounts = await db.accounts.toArray();
+  availablePaymentAccounts.value = allAccounts.filter((a) => a.isActive && a.type !== 'server_pulsa');
+}
+
+onMounted(async () => {
+  await loadData();
+});
 </script>
 
 <style scoped>
 .receivables-container {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  padding-bottom: 30px;
 }
-
 .view-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 8px;
 }
-
 .page-title {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-main);
 }
-
 .total-badge {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--color-warning);
-  background: var(--color-warning-subtle);
   padding: 4px 10px;
+  background: rgba(225, 29, 72, 0.1);
+  color: var(--color-danger);
   border-radius: var(--radius-chip);
 }
-
 .section-intro {
-  font-size: 13px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  line-height: 1.4;
 }
 
 .receivable-list {
@@ -179,34 +232,47 @@ async function handlePayFull() {
   flex-direction: column;
   gap: 10px;
 }
-
 .debt-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--surface-card);
-  padding: 14px 16px;
-  border-radius: var(--radius-card);
-  border: 1px solid var(--border-color);
+  gap: 12px;
 }
-
 .debt-main {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
-
+.customer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .debt-customer-name {
   font-size: 15px;
   font-weight: 700;
   color: var(--text-main);
 }
-
+.age-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-muted);
+}
+.age-badge.old-debt {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
 .debt-phone {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
-
 .debt-date {
   font-size: 11px;
   color: var(--text-muted);
@@ -218,131 +284,140 @@ async function handlePayFull() {
   align-items: flex-end;
   gap: 6px;
 }
-
 .debt-amount {
   font-size: 16px;
-  font-weight: 800;
-  color: var(--color-warning);
-}
-
-.btn-pay-full {
-  padding: 6px 12px;
-  background: var(--color-primary);
-  color: #ffffff;
-  border: none;
-  border-radius: var(--radius-chip);
-  font-size: 12px;
   font-weight: 700;
-  cursor: pointer;
-  transition: background-color var(--transition-fast);
+  color: var(--color-danger);
 }
-
-.btn-pay-full:active {
-  background: var(--color-primary-dark);
+.btn-group-actions {
+  display: flex;
+  gap: 4px;
+}
+.btn-pay-full {
+  background: var(--color-success);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-pay-partial {
+  background: var(--bg-canvas);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-wa-reminder {
+  background: #25D366;
+  color: white;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 1000;
   padding: 16px;
 }
-
 .modal-card {
-  width: 100%;
-  max-width: 400px;
-  background: var(--surface-card);
+  background: var(--bg-card);
   border-radius: var(--radius-card);
   padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  max-width: 400px;
+  width: 100%;
 }
-
 .modal-title {
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-main);
+  margin-bottom: 6px;
 }
-
 .modal-desc {
   font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.4;
+  color: var(--text-muted);
+  margin-bottom: 12px;
 }
-
 .modal-amount {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--color-primary-dark);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-danger);
+  margin-bottom: 16px;
   text-align: center;
-  padding: 8px 0;
 }
 
 .form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  margin-bottom: 14px;
 }
-
 .form-label {
+  display: block;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.form-select {
-  height: 44px;
-  padding: 0 12px;
-  border-radius: var(--radius-btn);
-  border: 1px solid var(--border-color);
-  background: var(--surface-card);
   color: var(--text-main);
-  font-size: 14px;
-  outline: none;
+  margin-bottom: 6px;
+}
+.form-select,
+.form-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  color: var(--text-main);
+  font-size: 13px;
 }
 
 .error-banner {
-  background: var(--color-danger-subtle);
-  color: var(--color-danger);
   padding: 8px 12px;
-  border-radius: var(--radius-btn);
+  border-radius: 6px;
+  background: #FEF2F2;
+  color: #991B1B;
   font-size: 12px;
-  font-weight: 600;
+  margin-bottom: 12px;
 }
-
 .modal-actions {
   display: flex;
   gap: 10px;
-  margin-top: 6px;
+  margin-top: 16px;
 }
-
 .btn-cancel {
   flex: 1;
-  height: 44px;
+  padding: 10px;
   border: 1px solid var(--border-color);
-  background: var(--surface-card-subtle);
-  border-radius: var(--radius-btn);
-  font-weight: 600;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 8px;
   cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
 }
-
 .btn-confirm-pay {
   flex: 2;
-  height: 44px;
+  padding: 10px;
   border: none;
-  background: var(--color-primary);
-  color: #ffffff;
-  border-radius: var(--radius-btn);
-  font-weight: 700;
+  background: var(--color-success);
+  color: white;
+  border-radius: 8px;
   cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
 }
-
 .btn-confirm-pay:disabled {
   opacity: 0.5;
   cursor: not-allowed;

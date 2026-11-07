@@ -127,4 +127,46 @@ describe('ReceivableService (Hutang Versi Simpel MVP)', () => {
       receivableService.markPaidFull(custId, kasId, Date.now())
     ).rejects.toThrow(AppError);
   });
+
+  it('Pelunasan Sebagian / Cicilan (Fase 2): mengurangi hutang dan mencatat mutasi uang masuk', async () => {
+    const kasId = await accountService.addAccount({
+      name: 'Kas Toko',
+      type: 'kas',
+      initialBalance: 50000,
+    });
+
+    const custId = 'cust-cicil-1';
+    await db.customers.add({
+      id: custId,
+      name: 'Siti Rahma',
+      phone: '081298765432',
+      balanceHutang: 100000,
+      createdAt: Date.now() - 86400000 * 3, // 3 hari lalu
+    });
+
+    // Bayar cicilan Rp 40.000
+    const res = await receivableService.payPartial(custId, 40000, kasId, Date.now(), 'kasir-1');
+    expect(res.remainingDebt).toBe(60000);
+
+    const cust = await db.customers.get(custId);
+    expect(cust?.balanceHutang).toBe(60000);
+
+    // Kas toko bertambah 40.000 menjadi 90.000
+    const saldoKas = await accountService.getBalance(kasId);
+    expect(saldoKas).toBe(90000);
+
+    // Pembayaran melebihi sisa hutang ditolak
+    await expect(
+      receivableService.payPartial(custId, 70000, kasId, Date.now(), 'kasir-1')
+    ).rejects.toThrow('Nominal pembayaran melebihi total hutang');
+
+    // Umur hutang tercatat 3 hari
+    const list = await receivableService.listReceivables();
+    expect(list[0]?.debtAgeDays).toBeGreaterThanOrEqual(2);
+
+    // Tautan WhatsApp valid
+    const waLink = receivableService.generateWhatsAppReminder(list[0]!);
+    expect(waLink).toContain('https://wa.me/6281298765432');
+    expect(waLink).toContain('Siti%20Rahma');
+  });
 });
