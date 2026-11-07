@@ -130,6 +130,47 @@
         </EmptyState>
       </div>
     </div>
+
+    <!-- Modal Onboarding Ringkas 1 Layar (Bisa di-skip) -->
+    <div v-if="showOnboarding" class="onboarding-overlay">
+      <div class="onboarding-card">
+        <div class="onboarding-header">
+          <span class="app-badge">BUKU KONTER</span>
+          <h2 class="onboarding-title">Panduan Cepat Aplikasi</h2>
+          <p class="onboarding-subtitle">Pembukuan konter modern, cepat, dan local-first.</p>
+        </div>
+
+        <div class="onboarding-steps">
+          <div class="step-item">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              <strong>Catat Transaksi Cepat</strong>
+              <p>Mencatat transaksi pulsa, transfer, token, hingga voucher. Opsi bayar admin (Cash / Debit Rekening) terletak di samping nominal.</p>
+            </div>
+          </div>
+
+          <div class="step-item">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              <strong>Master & Tarif Otomatis</strong>
+              <p>Modal & harga jual disimpan di Master oleh Owner/Admin. Tarif admin terisi otomatis berdasarkan range nominal.</p>
+            </div>
+          </div>
+
+          <div class="step-item">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              <strong>Shift & Serah Terima 2 PIN</strong>
+              <p>Setiap giliran kerja diawali kas fisik, ditutup dengan hitung fisik, dan diserahterimakan aman dengan konfirmasi PIN ganda.</p>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-dismiss-onboarding" @click="dismissOnboarding">
+          Mulai Menggunakan (Lewati)
+        </button>
+      </div>
+    </div>
   </AppScaffold>
 </template>
 
@@ -154,8 +195,22 @@ const accountList = ref<Account[]>([]);
 const accountBalances = ref<Record<string, number>>({});
 const recentTransactions = ref<Transaction[]>([]);
 const currentWitaTime = ref(formatTanggalWita(Date.now(), { hour: '2-digit', minute: '2-digit' }));
+const showOnboarding = ref(false);
+
+function dismissOnboarding() {
+  showOnboarding.value = false;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('buku_konter_onboarding_shown', 'true');
+  }
+}
 
 onMounted(async () => {
+  if (typeof localStorage !== 'undefined') {
+    const shown = localStorage.getItem('buku_konter_onboarding_shown');
+    if (!shown) {
+      showOnboarding.value = true;
+    }
+  }
   // Muat akun
   accountList.value = await db.accounts.filter((a) => a.isActive).toArray();
   // Muat shift aktif
@@ -392,5 +447,97 @@ onMounted(async () => {
   color: #ffffff;
   border-radius: var(--radius-btn);
   text-decoration: none;
+}
+
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.onboarding-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  max-width: 420px;
+  width: 100%;
+  padding: 24px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.app-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.1);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.onboarding-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-top: 6px;
+}
+.onboarding-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.step-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.step-text strong {
+  font-size: 13px;
+  color: var(--text-main);
+  display: block;
+}
+.step-text p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.btn-dismiss-onboarding {
+  margin-top: 6px;
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius-btn);
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.btn-dismiss-onboarding:hover {
+  opacity: 0.9;
 }
 </style>

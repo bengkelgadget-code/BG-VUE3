@@ -27,6 +27,12 @@
   --radius-chip: 999px;
   --radius-sheet: 28px;
 
+  /* Aliases */
+  --primary: var(--color-primary);
+  --bg-card: var(--surface-card);
+  --bg-canvas: var(--bg-app);
+  --color-success: var(--color-income);
+
   /* Transitions */
   --transition-fast: 150ms ease-out;
   --transition-normal: 200ms ease-out;
