@@ -47,7 +47,7 @@ export const useTransactionStore = defineStore('transactions', () => {
     }
   }
 
-  async function voidTransaction(id: string, opts: { reason: string; actorUserId: string }) {
+  async function voidTransaction(id: string, opts: { reason: string; actorUserId: string; adminPin?: string }) {
     await transactionService.voidTransaction(id, opts);
     await loadTransactionDetail(id);
     await loadTransactions();

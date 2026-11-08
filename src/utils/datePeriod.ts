@@ -12,15 +12,32 @@ export interface PeriodRange {
 const WITA_OFFSET_MS = 8 * 60 * 60 * 1000; // UTC+8
 
 /**
- * Mengambil tanggal hari ini dalam format YYYY-MM-DD WITA
+ * Mengambil tanggal dalam format YYYY-MM-DD WITA dari epoch ms
  */
-export function getTodayWitaString(): string {
-  const now = new Date();
-  const witaDate = new Date(now.getTime() + WITA_OFFSET_MS);
+export function getWitaDateString(epochMs: number): string {
+  const witaDate = new Date(epochMs + WITA_OFFSET_MS);
   const y = witaDate.getUTCFullYear();
   const m = String(witaDate.getUTCMonth() + 1).padStart(2, '0');
   const d = String(witaDate.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+/**
+ * Parse string YYYY-MM-DD menjadi epoch ms jam 12:00:00 WITA (tengah hari)
+ */
+export function parseWitaDateToEpoch(dateStr: string): number {
+  const parts = dateStr.split('-');
+  const y = parseInt(parts[0] || '2026', 10);
+  const m = parseInt(parts[1] || '1', 10);
+  const d = parseInt(parts[2] || '1', 10);
+  return Date.UTC(y, m - 1, d, 12, 0, 0, 0) - WITA_OFFSET_MS;
+}
+
+/**
+ * Mengambil tanggal hari ini dalam format YYYY-MM-DD WITA
+ */
+export function getTodayWitaString(): string {
+  return getWitaDateString(Date.now());
 }
 
 /**

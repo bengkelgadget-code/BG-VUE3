@@ -84,6 +84,7 @@ export interface Transaction {
   paymentMethod: 'tunai' | 'transfer' | 'qris' | 'ewallet';
   paymentStatus: 'lunas' | 'hutang';
   date: number; // epoch ms (WITA)
+  dateChangeReason?: string; // Alasan koreksi tanggal oleh Owner/Admin
   note?: string;
   referenceNo?: string;
   photoPath?: string;

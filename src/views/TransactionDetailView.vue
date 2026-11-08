@@ -64,6 +64,11 @@
           <span class="d-val">{{ kasirName }}</span>
         </div>
 
+        <div v-if="transaction.dateChangeReason" class="detail-row">
+          <span class="d-label">Alasan Koreksi Tanggal</span>
+          <span class="d-val text-warning">{{ transaction.dateChangeReason }}</span>
+        </div>
+
         <div v-if="transaction.note" class="detail-row">
           <span class="d-label">Catatan</span>
           <span class="d-val">{{ transaction.note }}</span>
@@ -88,10 +93,10 @@
         </div>
       </div>
 
-      <!-- Tombol Batalkan Transaksi (Void) -->
-      <div v-if="transaction.status !== 'void'" class="void-section">
+      <!-- Tombol Batalkan Transaksi (Void) - HANYA OWNER/ADMIN -->
+      <div v-if="authStore.isAdmin && transaction.status !== 'void'" class="void-section">
         <div v-if="!showVoidDialog">
-          <button class="btn-void-trigger" @click="showVoidDialog = true">
+          <button class="btn-void-trigger" @click="openVoidDialog">
             Batalkan Transaksi (Void)
           </button>
         </div>
@@ -100,7 +105,7 @@
         <div v-else class="void-box">
           <h4 class="void-title">Konfirmasi Pembatalan Transaksi</h4>
           <p class="void-desc">
-            Transaksi tidak dihapus permanen. Saldo catatan dan stok akan dikembalikan secara otomatis.
+            Transaksi tidak dihapus permanen. Saldo catatan dan stok akan dikembalikan secara otomatis. Memerlukan PIN Owner/Admin.
           </p>
 
           <div class="form-group">
@@ -114,15 +119,28 @@
             />
           </div>
 
+          <div class="form-group">
+            <label class="form-label">PIN Admin / Owner (Wajib)</label>
+            <input
+              v-model="adminPin"
+              type="password"
+              maxlength="6"
+              inputmode="numeric"
+              class="form-input"
+              placeholder="Masukkan PIN Admin"
+              required
+            />
+          </div>
+
           <div v-if="voidError" class="void-error">
             {{ voidError }}
           </div>
 
           <div class="void-actions">
-            <button class="btn-cancel" @click="showVoidDialog = false">Batal</button>
+            <button class="btn-cancel" @click="closeVoidDialog">Batal</button>
             <button
               class="btn-confirm-void"
-              :disabled="isVoiding || !voidReason.trim()"
+              :disabled="isVoiding || !voidReason.trim() || !adminPin.trim()"
               @click="handleVoid"
             >
               {{ isVoiding ? 'Membatalkan...' : 'Ya, Batalkan Transaksi' }}
@@ -158,8 +176,22 @@ const kasirName = ref<string>('');
 
 const showVoidDialog = ref<boolean>(false);
 const voidReason = ref<string>('');
+const adminPin = ref<string>('');
 const voidError = ref<string>('');
 const isVoiding = ref<boolean>(false);
+
+function openVoidDialog() {
+  voidReason.value = '';
+  adminPin.value = '';
+  voidError.value = '';
+  showVoidDialog.value = true;
+}
+
+function closeVoidDialog() {
+  showVoidDialog.value = false;
+  adminPin.value = '';
+  voidError.value = '';
+}
 
 onMounted(async () => {
   const id = route.params['id'] as string;
@@ -202,16 +234,24 @@ async function handleVoid() {
     return;
   }
 
+  if (!adminPin.value.trim()) {
+    voidError.value = 'PIN konfirmasi Owner/Admin wajib diisi.';
+    return;
+  }
+
   isVoiding.value = true;
   try {
     await transactionService.voidTransaction(transaction.value.id, {
       reason: voidReason.value.trim(),
-      actorUserId: authStore.currentUser?.id || 'system',
+      actorUserId: authStore.currentUser?.id || '',
+      adminPin: adminPin.value.trim(),
     });
 
     // Refresh data
     transaction.value = (await transactionService.getTransaction(transaction.value.id)) || null;
     showVoidDialog.value = false;
+    adminPin.value = '';
+    voidReason.value = '';
   } catch (err: unknown) {
     if (err instanceof AppError) {
       voidError.value = err.message;
@@ -429,6 +469,18 @@ async function handleVoid() {
 
 .void-desc {
   font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 

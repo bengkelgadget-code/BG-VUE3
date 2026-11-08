@@ -283,6 +283,65 @@
           </div>
         </div>
 
+        <!-- Tanggal Transaksi & Alasan Koreksi (Owner/Admin) -->
+        <div class="form-section card-section">
+          <div class="form-group">
+            <div class="date-header-row">
+              <label class="form-label">Tanggal Transaksi (WITA)</label>
+              <span v-if="authStore.isAdmin" class="badge-role-tag admin-tag">Owner / Admin</span>
+              <span v-else class="badge-role-tag kasir-tag">Otomatis (Kasir)</span>
+            </div>
+
+            <!-- Input Tanggal: aktif untuk Owner/Admin, disabled/readonly untuk Kasir -->
+            <input
+              v-if="authStore.isAdmin"
+              v-model="transactionDateStr"
+              type="date"
+              :max="todayWita"
+              class="form-input date-input"
+              data-testid="input-tanggal-transaksi"
+            />
+            <input
+              v-else
+              :value="todayWita"
+              type="date"
+              disabled
+              class="form-input date-input disabled-input"
+              data-testid="input-tanggal-transaksi"
+            />
+            <span v-if="!authStore.isAdmin" class="form-hint">
+              Kasir mencatat transaksi menggunakan tanggal dan waktu sistem saat ini.
+            </span>
+          </div>
+
+          <!-- Alasan Perubahan Tanggal (Wajib jika diubah dari default oleh Owner/Admin) -->
+          <div v-if="authStore.isAdmin && isDateChanged" class="form-group mt-2">
+            <label class="form-label text-warning">Alasan Perubahan Tanggal (Wajib)</label>
+            <input
+              v-model="dateChangeReason"
+              type="text"
+              class="form-input"
+              placeholder="Contoh: Transaksi susulan kemarin sore yang belum sempat diinput"
+              data-testid="input-alasan-tanggal"
+              required
+            />
+            <span class="form-hint text-warning">
+              Pencatatan tanggal susulan/koreksi wajib mencantumkan alasan untuk jejak audit.
+            </span>
+          </div>
+
+          <!-- Jika layanan non-kasir yang form-section 4 disembunyikan, tampilkan catatan di sini -->
+          <div v-if="['operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)" class="form-group mt-2">
+            <label class="form-label">Catatan Tambahan (Opsional)</label>
+            <input
+              v-model="note"
+              type="text"
+              class="form-input"
+              placeholder="Catatan kecil / keterangan"
+            />
+          </div>
+        </div>
+
         <!-- 5. Tombol Simpan Sticky di Bawah -->
         <div class="sticky-footer">
           <div class="summary-preview">
@@ -323,6 +382,7 @@ import MoneyInput from '../components/MoneyInput.vue';
 import FeeBadge from '../components/FeeBadge.vue';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
+import { getTodayWitaString, parseWitaDateToEpoch } from '../utils/datePeriod';
 import { db } from '../db/database';
 import { feeRuleService } from '../services/feeRuleService';
 import { transactionService } from '../services/transactionService';
@@ -335,6 +395,12 @@ const authStore = useAuthStore();
 
 const currentWitaTime = ref(formatTanggalWita(Date.now(), { hour: '2-digit', minute: '2-digit' }));
 const activeShiftId = ref<string | null>(null);
+
+// Tanggal Transaksi
+const todayWita = getTodayWitaString();
+const transactionDateStr = ref<string>(todayWita);
+const dateChangeReason = ref<string>('');
+const isDateChanged = computed(() => transactionDateStr.value !== todayWita);
 
 // Form States
 const layanan = ref<string>('transfer');
@@ -498,6 +564,22 @@ async function handleSubmit() {
     return;
   }
 
+  // Validasi jika Owner/Admin mengubah tanggal dari default
+  if (authStore.isAdmin && isDateChanged.value) {
+    if (!dateChangeReason.value.trim() || dateChangeReason.value.trim().length < 3) {
+      errorMessage.value = 'Alasan perubahan tanggal transaksi wajib diisi minimal 3 karakter.';
+      return;
+    }
+    if (transactionDateStr.value > todayWita) {
+      errorMessage.value = 'Tanggal transaksi tidak boleh di masa depan.';
+      return;
+    }
+  }
+
+  const txDate = (authStore.isAdmin && isDateChanged.value)
+    ? parseWitaDateToEpoch(transactionDateStr.value)
+    : Date.now();
+
   isSubmitting.value = true;
   try {
     await transactionService.addTransaction(
@@ -517,7 +599,8 @@ async function handleSubmit() {
         customerId: selectedCustomerId.value || undefined,
         referenceNo: referenceNo.value || undefined,
         note: note.value || undefined,
-        date: Date.now(),
+        date: txDate,
+        dateChangeReason: (authStore.isAdmin && isDateChanged.value) ? dateChangeReason.value.trim() : undefined,
       },
       {
         actorUserId: authStore.currentUser?.id || 'system',
@@ -833,6 +916,39 @@ async function handleSubmit() {
 
 .btn-submit-tx:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.date-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badge-role-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.admin-tag {
+  background: var(--color-primary-subtle, rgba(37, 99, 235, 0.1));
+  color: var(--color-primary, #2563eb);
+}
+
+.kasir-tag {
+  background: var(--surface-card-subtle, #f3f4f6);
+  color: var(--text-secondary, #6b7280);
+}
+
+.date-input {
+  font-family: inherit;
+}
+
+.disabled-input {
+  background: var(--surface-card-subtle, #f3f4f6);
+  color: var(--text-secondary, #6b7280);
   cursor: not-allowed;
 }
 </style>

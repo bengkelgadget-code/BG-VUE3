@@ -5,6 +5,8 @@ import { AppError } from '../core/errors';
 import { productService } from './productService';
 import { balanceService } from './balanceService';
 import { stockService } from './stockService';
+import { authService } from './authService';
+import { getWitaDateString } from '../utils/datePeriod';
 
 export interface CartItemInput {
   productId: string;
@@ -26,6 +28,7 @@ export interface TransactionInput {
   paymentMethod: 'tunai' | 'transfer' | 'qris' | 'ewallet';
   paymentStatus?: 'lunas' | 'hutang';
   date: number; // epoch ms (WITA)
+  dateChangeReason?: string; // Alasan bila tanggal dikoreksi Owner/Admin
   note?: string;
   referenceNo?: string;
   photoPath?: string;
@@ -73,7 +76,29 @@ export class TransactionService {
 
     const transactionId = uuidv4();
     const now = Date.now();
-    const date = input.date || now;
+    const date = input.date ?? now;
+
+    // 1. Validasi: tanggal tidak boleh di masa depan
+    if (date > now) {
+      throw new AppError('Tanggal transaksi tidak boleh di masa depan.');
+    }
+
+    // 2. Validasi izin ubah tanggal: kasir tidak boleh ubah tanggal; owner/admin wajib isi alasan
+    const actor = await db.users.get(opts.actorUserId);
+    const isOwnerOrAdmin = actor ? (actor.role === 'owner' || actor.role === 'admin') : false;
+
+    const todayWita = getWitaDateString(now);
+    const txWita = getWitaDateString(date);
+    const isDateDifferent = txWita !== todayWita;
+
+    if (isDateDifferent || input.dateChangeReason) {
+      if (!isOwnerOrAdmin) {
+        throw new AppError('Kasir tidak diizinkan mengubah tanggal transaksi.');
+      }
+      if (!input.dateChangeReason || input.dateChangeReason.trim().length < 3) {
+        throw new AppError('Alasan perubahan tanggal transaksi wajib diisi minimal 3 karakter.');
+      }
+    }
 
     // Ambil modal & jual snapshot jika transaksi memiliki produk
     let modal = 0;
@@ -160,6 +185,7 @@ export class TransactionService {
       paymentMethod: input.paymentMethod,
       paymentStatus,
       date,
+      dateChangeReason: input.dateChangeReason?.trim(),
       note: input.note?.trim(),
       referenceNo: input.referenceNo?.trim(),
       photoPath: input.photoPath,
@@ -237,6 +263,7 @@ export class TransactionService {
             nominal: input.nominal,
             fee: input.fee,
             paymentStatus,
+            dateChangeReason: input.dateChangeReason?.trim(),
           }),
           createdAt: now,
         });
@@ -252,11 +279,25 @@ export class TransactionService {
    */
   public async voidTransaction(
     transactionId: string,
-    opts: { reason: string; actorUserId: string }
+    opts: { reason: string; actorUserId: string; adminPin?: string }
   ): Promise<void> {
+    const actor = await db.users.get(opts.actorUserId);
+    if (!actor || (actor.role !== 'owner' && actor.role !== 'admin')) {
+      throw new AppError('Hanya Owner dan Admin yang memiliki akses membatalkan (void) transaksi.');
+    }
+
     const trimmedReason = opts.reason?.trim();
     if (!trimmedReason || trimmedReason.length < 3) {
       throw new AppError('Alasan pembatalan (void) transaksi wajib diisi minimal 3 karakter.');
+    }
+
+    if (!opts.adminPin || !opts.adminPin.trim()) {
+      throw new AppError('PIN konfirmasi Owner/Admin wajib diisi.');
+    }
+
+    const isPinValid = await authService.verifyPin(opts.actorUserId, opts.adminPin.trim());
+    if (!isPinValid) {
+      throw new AppError('PIN konfirmasi Owner/Admin salah. Pembatalan transaksi ditolak.');
     }
 
     const tx = await db.transactions.get(transactionId);

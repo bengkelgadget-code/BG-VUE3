@@ -4,6 +4,7 @@ import { db } from '../src/db/database';
 import { transactionService } from '../src/services/transactionService';
 import { productService } from '../src/services/productService';
 import { accountService } from '../src/services/accountService';
+import { authService } from '../src/services/authService';
 
 describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
   let kasId: string;
@@ -22,11 +23,15 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
     await db.auditLogs.clear();
     await db.users.clear();
 
-    // Setup users
+    // Setup users dengan hash PIN nyata (SHA-256)
+    const adminPinHash = await authService.hashPin('123456');
+    const ownerPinHash = await authService.hashPin('654321');
+    const kasirPinHash = await authService.hashPin('111111');
+
     await db.users.bulkAdd([
-      { id: 'admin-1', name: 'Admin Konter', role: 'admin', pinHash: 'hash1', isActive: true, createdAt: Date.now() },
-      { id: 'owner-1', name: 'Owner Konter', role: 'owner', pinHash: 'hash2', isActive: true, createdAt: Date.now() },
-      { id: 'kasir-1', name: 'Kasir Shift', role: 'kasir', pinHash: 'hash3', isActive: true, createdAt: Date.now() },
+      { id: 'admin-1', name: 'Admin Konter', role: 'admin', pinHash: adminPinHash, isActive: true, createdAt: Date.now() },
+      { id: 'owner-1', name: 'Owner Konter', role: 'owner', pinHash: ownerPinHash, isActive: true, createdAt: Date.now() },
+      { id: 'kasir-1', name: 'Kasir Shift', role: 'kasir', pinHash: kasirPinHash, isActive: true, createdAt: Date.now() },
     ]);
 
     // Setup akun dasar
@@ -143,6 +148,7 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
     await transactionService.voidTransaction(txId, {
       reason: 'Pelanggan salah pilih kuota',
       actorUserId: 'admin-1',
+      adminPin: '123456',
     });
 
     // 1. Transaksi masih ada di database tapi statusnya 'void' (tidak di-hard-delete)
@@ -266,14 +272,16 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
     await expect(
       transactionService.voidTransaction(txId, {
         reason: 'ok',
-        actorUserId: 'kasir-1',
+        actorUserId: 'admin-1',
+        adminPin: '123456',
       })
     ).rejects.toThrow('Alasan pembatalan (void) transaksi wajib diisi minimal 3 karakter');
 
     // 4. Void dengan alasan sah
     await transactionService.voidTransaction(txId, {
       reason: 'Pelanggan salah beli denominasi',
-      actorUserId: 'kasir-1',
+      actorUserId: 'admin-1',
+      adminPin: '123456',
     });
 
     // 5. Saldo kas dan stok kembali persis seperti semula
@@ -285,5 +293,226 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
     expect(tx).toBeDefined();
     expect(tx?.status).toBe('void');
     expect(tx?.voidReason).toBe('Pelanggan salah beli denominasi');
+  });
+
+  describe('F1: Gate Void Transaksi (Role Owner/Admin + PIN Verification)', () => {
+    it('kasir memanggil void -> ditolak dengan AppError', async () => {
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'voucher',
+          productId: voucherId,
+          accountId: kasId,
+          nominal: 32000,
+          fee: 0,
+          feePaidBy: 'cash',
+          feeManualOverride: false,
+          paymentMethod: 'tunai',
+          paymentStatus: 'lunas',
+          date: Date.now(),
+        },
+        { actorUserId: 'kasir-1', shiftId: 'shift-1' }
+      );
+
+      // Kasir mencoba void sendiri
+      await expect(
+        transactionService.voidTransaction(txId, {
+          reason: 'Kasir mencoba void',
+          actorUserId: 'kasir-1',
+          adminPin: '111111',
+        })
+      ).rejects.toThrow('Hanya Owner dan Admin yang memiliki akses membatalkan (void) transaksi.');
+
+      const tx = await db.transactions.get(txId);
+      expect(tx?.status).toBe('ok');
+    });
+
+    it('Owner/Admin dengan PIN salah -> ditolak, transaksi tidak berubah', async () => {
+      const initialKas = await accountService.getBalance(kasId);
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'voucher',
+          productId: voucherId,
+          accountId: kasId,
+          nominal: 32000,
+          fee: 0,
+          feePaidBy: 'cash',
+          feeManualOverride: false,
+          paymentMethod: 'tunai',
+          paymentStatus: 'lunas',
+          date: Date.now(),
+        },
+        { actorUserId: 'kasir-1', shiftId: 'shift-1' }
+      );
+
+      // Admin dengan PIN salah
+      await expect(
+        transactionService.voidTransaction(txId, {
+          reason: 'Salah input transaksi',
+          actorUserId: 'admin-1',
+          adminPin: '999999', // PIN salah
+        })
+      ).rejects.toThrow('PIN konfirmasi Owner/Admin salah. Pembatalan transaksi ditolak.');
+
+      const tx = await db.transactions.get(txId);
+      expect(tx?.status).toBe('ok');
+      expect(tx?.voidReason).toBeUndefined();
+      expect(await accountService.getBalance(kasId)).toBe(initialKas + 32000);
+    });
+
+    it('Owner/Admin dengan PIN benar + alasan >= 3 karakter -> void berhasil, saldo/stok/piutang berbalik, audit tertulis', async () => {
+      // Setup customer hutang
+      const custId = 'cust-void-test';
+      await db.customers.add({
+        id: custId,
+        name: 'Pelanggan Piutang Void',
+        balanceHutang: 0,
+        createdAt: Date.now(),
+      });
+
+      const initialKas = await accountService.getBalance(kasId);
+      const initialStock = (await db.products.get(voucherId))?.stock ?? 0;
+
+      // Buat transaksi hutang dengan voucher fisik
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'voucher',
+          productId: voucherId,
+          accountId: kasId,
+          nominal: 32000,
+          fee: 0,
+          feePaidBy: 'cash',
+          feeManualOverride: false,
+          paymentMethod: 'tunai',
+          paymentStatus: 'hutang',
+          customerId: custId,
+          date: Date.now(),
+        },
+        { actorUserId: 'kasir-1', shiftId: 'shift-1' }
+      );
+
+      // Pastikan piutang bertambah, stok berkurang
+      expect((await db.customers.get(custId))?.balanceHutang).toBe(32000);
+      expect((await db.products.get(voucherId))?.stock).toBe(initialStock - 1);
+
+      // Owner melakukan void dengan PIN benar
+      await transactionService.voidTransaction(txId, {
+        reason: 'Dibatalkan oleh Owner karena salah denominasi',
+        actorUserId: 'owner-1',
+        adminPin: '654321', // PIN benar owner
+      });
+
+      // 1. Status transaksi jadi 'void' dan tercatat voidReason & voidBy
+      const tx = await db.transactions.get(txId);
+      expect(tx?.status).toBe('void');
+      expect(tx?.voidReason).toBe('Dibatalkan oleh Owner karena salah denominasi');
+      expect(tx?.voidBy).toBe('owner-1');
+
+      // 2. Stok berbalik kembali ke awal
+      expect((await db.products.get(voucherId))?.stock).toBe(initialStock);
+
+      // 3. Piutang pelanggan berbalik berkurang
+      expect((await db.customers.get(custId))?.balanceHutang).toBe(0);
+
+      // 4. Saldo kas tetap konsisten
+      expect(await accountService.getBalance(kasId)).toBe(initialKas);
+
+      // 5. Jejak audit tertulis
+      const audit = await db.auditLogs.where('entityId').equals(txId).toArray();
+      const voidAudit = audit.find((a) => a.action === 'void_transaksi');
+      expect(voidAudit).toBeDefined();
+      expect(voidAudit?.actorUserId).toBe('owner-1');
+    });
+  });
+
+  describe('F2: Koreksi Tanggal Transaksi oleh Owner/Admin dengan Alasan', () => {
+    it('kasir tidak bisa mengubah tanggal transaksi -> ditolak dengan AppError', async () => {
+      const yesterday = Date.now() - 24 * 3600 * 1000;
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'voucher',
+            productId: voucherId,
+            accountId: kasId,
+            nominal: 32000,
+            fee: 0,
+            feePaidBy: 'cash',
+            feeManualOverride: false,
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            date: yesterday,
+            dateChangeReason: 'Kasir mau catat tanggal kemarin',
+          },
+          { actorUserId: 'kasir-1', shiftId: 'shift-1' }
+        )
+      ).rejects.toThrow('Kasir tidak diizinkan mengubah tanggal transaksi.');
+    });
+
+    it('tanggal transaksi di masa depan ditolak dengan AppError', async () => {
+      const tomorrow = Date.now() + 24 * 3600 * 1000;
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'voucher',
+            productId: voucherId,
+            accountId: kasId,
+            nominal: 32000,
+            fee: 0,
+            feePaidBy: 'cash',
+            feeManualOverride: false,
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            date: tomorrow,
+            dateChangeReason: 'Transaksi besok',
+          },
+          { actorUserId: 'owner-1', shiftId: 'shift-1' }
+        )
+      ).rejects.toThrow('Tanggal transaksi tidak boleh di masa depan.');
+    });
+
+    it('Owner mengubah tanggal tanpa alasan -> ditolak dengan AppError', async () => {
+      const yesterday = Date.now() - 24 * 3600 * 1000;
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'voucher',
+            productId: voucherId,
+            accountId: kasId,
+            nominal: 32000,
+            fee: 0,
+            feePaidBy: 'cash',
+            feeManualOverride: false,
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            date: yesterday,
+          },
+          { actorUserId: 'owner-1', shiftId: 'shift-1' }
+        )
+      ).rejects.toThrow('Alasan perubahan tanggal transaksi wajib diisi minimal 3 karakter.');
+    });
+
+    it('Owner mengubah tanggal dengan alasan -> tersimpan beserta tanggal dan alasannya', async () => {
+      const yesterday = Date.now() - 24 * 3600 * 1000;
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'voucher',
+          productId: voucherId,
+          accountId: kasId,
+          nominal: 32000,
+          fee: 0,
+          feePaidBy: 'cash',
+          feeManualOverride: false,
+          paymentMethod: 'tunai',
+          paymentStatus: 'lunas',
+          date: yesterday,
+          dateChangeReason: 'Transaksi susulan kemarin sore yang belum sempat diinput',
+        },
+        { actorUserId: 'owner-1', shiftId: 'shift-1' }
+      );
+
+      const tx = await db.transactions.get(txId);
+      expect(tx).toBeDefined();
+      expect(tx?.date).toBe(yesterday);
+      expect(tx?.dateChangeReason).toBe('Transaksi susulan kemarin sore yang belum sempat diinput');
+    });
   });
 });
