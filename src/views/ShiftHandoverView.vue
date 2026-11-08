@@ -251,14 +251,14 @@ onMounted(() => {
   font-weight: 500;
 }
 .feedback-banner.success {
-  background: #ECFDF5;
-  border: 1px solid #A7F3D0;
-  color: #065F46;
+  background: var(--color-income-subtle);
+  border: 1px solid var(--color-income);
+  color: var(--color-income);
 }
 .feedback-banner.error {
-  background: #FEF2F2;
-  border: 1px solid #FECACA;
-  color: #991B1B;
+  background: var(--color-danger-subtle);
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
 }
 
 .summary-card {
@@ -313,11 +313,11 @@ onMounted(() => {
 .discrepancy-warning {
   margin-top: 10px;
   padding: 10px;
-  background: #FFFBEB;
-  border: 1px solid #FDE68A;
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning);
   border-radius: 8px;
   font-size: 12px;
-  color: #92400E;
+  color: var(--color-warning);
 }
 .diff-text {
   display: block;

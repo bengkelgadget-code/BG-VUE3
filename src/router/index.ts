@@ -171,6 +171,14 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  // Cek otorisasi peran (roles guard)
+  if (to.meta.roles && Array.isArray(to.meta.roles)) {
+    const allowedRoles = to.meta.roles as string[];
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      return next({ name: 'Home' });
+    }
+  }
+
   next();
 });
 

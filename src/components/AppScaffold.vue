@@ -185,7 +185,7 @@ const roleLabel = computed(() => {
   height: 52px;
   border-radius: 50%;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   display: flex;
   align-items: center;
   justify-content: center;

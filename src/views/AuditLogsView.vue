@@ -57,10 +57,12 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import AppScaffold from '../components/AppScaffold.vue';
 import { db } from '../db/database';
+import { useAuthStore } from '../stores/authStore';
 import type { AuditLog, User } from '../db/types';
 import { formatTanggalWita } from '../utils/format';
 
 const router = useRouter();
+const authStore = useAuthStore();
 const logs = ref<AuditLog[]>([]);
 const users = ref<User[]>([]);
 const selectedAction = ref<string>('');
@@ -111,8 +113,12 @@ async function loadLogs() {
   }
 }
 
-onMounted(() => {
-  loadLogs();
+onMounted(async () => {
+  if (!authStore.isAdmin) {
+    router.replace('/');
+    return;
+  }
+  await loadLogs();
 });
 </script>
 
@@ -178,13 +184,13 @@ onMounted(() => {
 }
 .action-badge.koreksi_saldo,
 .action-badge.void_transaksi {
-  background: #FEE2E2;
-  color: #B91C1C;
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 .action-badge.opname,
 .action-badge.handover {
-  background: #FEF3C7;
-  color: #92400E;
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
 }
 .log-time {
   font-size: 11px;

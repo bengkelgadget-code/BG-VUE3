@@ -263,7 +263,7 @@ function setFeePaidBy(method: 'cash' | 'debit_rekening') {
 
 .toggle-btn.active {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   font-weight: 700;
   box-shadow: 0 2px 6px rgba(5, 150, 105, 0.25);
 }

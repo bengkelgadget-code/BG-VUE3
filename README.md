@@ -93,9 +93,10 @@ Pembaruan aplikasi dilakukan melalui mekanisme **Over-The-Air (OTA) APK via GitH
    - Dilarang menyimpan file `.jks` atau password di dalam repository Git.
    - `version_code` di `version.json` wajib naik pada setiap rilis agar Android mengizinkan instalasi tumpuk (update).
 3. **Pengecekan Pembaruan di Aplikasi**:
-   - `UpdateService` memeriksa `version.json` secara berkala atau lewat tombol di menu Pengaturan.
-   - Jika tersedia versi baru, aplikasi menampilkan dialog konfirmasi, progress bar download, dan membuka installer APK Android.
-   - Jika `force_update: true`, dialog tidak dapat dilewati hingga pengguna memperbarui aplikasi.
+   - `UpdateService` memeriksa `version.json` secara otomatis (silent) saat aplikasi pertama kali dibuka serta melalui tombol **Cek Pembaruan** manual di menu Pengaturan.
+   - Jika tersedia versi baru, aplikasi menampilkan dialog konfirmasi pembaruan dengan catatan rilis (changelog) dan progress bar download.
+   - Pengunduhan berkas APK diproses langsung ke cache lokal dan diluncurkan melalui installer native Android via Capacitor Plugin (`FileProvider` & `Intent.ACTION_VIEW`).
+   - Jika `force_update: true`, dialog bersifat modal mutlak dan tidak dapat dilewati tanpa melakukan pembaruan.
 
 ---
 

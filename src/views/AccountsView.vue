@@ -104,7 +104,7 @@ function openDetail(id: string) {
 .btn-add {
   padding: 8px 14px;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-chip);
   font-size: 12px;
   font-weight: 700;
@@ -187,7 +187,7 @@ function openDetail(id: string) {
   font-size: 13px;
   font-weight: 700;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-btn);
   text-decoration: none;
 }

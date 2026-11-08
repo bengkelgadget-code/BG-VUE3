@@ -247,7 +247,7 @@ async function handleCorrectionSubmit() {
 
 .balance-card {
   background: var(--gradient-saldo);
-  color: #ffffff;
+  color: var(--color-white);
   padding: 20px 16px;
   border-radius: var(--radius-card);
   text-align: center;
@@ -399,7 +399,7 @@ async function handleCorrectionSubmit() {
   border: none;
   border-radius: var(--radius-btn);
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;

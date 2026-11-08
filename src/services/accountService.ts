@@ -36,7 +36,7 @@ export class AccountService {
       accountNo: params.accountNo?.trim() || undefined,
       ownerName: params.ownerName?.trim() || undefined,
       icon: params.icon || 'wallet',
-      color: params.color || '#059669',
+      color: params.color || 'var(--color-primary)',
       isActive: true,
       createdAt: now,
       updatedAt: now,

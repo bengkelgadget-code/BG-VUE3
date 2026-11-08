@@ -132,7 +132,7 @@ function hasDifference(s: Shift): boolean {
 
 .btn-open {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
 }
 
 .btn-close {

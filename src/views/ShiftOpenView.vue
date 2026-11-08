@@ -228,7 +228,7 @@ async function handleSubmit() {
   border: none;
   border-radius: var(--radius-btn);
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;

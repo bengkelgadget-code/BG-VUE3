@@ -136,7 +136,7 @@ async function handleDeactivateGroup(groupId: string) {
 .btn-add {
   padding: 8px 14px;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-chip);
   font-size: 12px;
   font-weight: 700;
@@ -189,8 +189,8 @@ async function handleDeactivateGroup(groupId: string) {
 }
 
 .fee-badge.persentase {
-  background: #E0E7FF;
-  color: #4338CA;
+  background: var(--color-indigo-subtle);
+  color: var(--color-indigo);
 }
 
 .services-chips {
@@ -233,7 +233,7 @@ async function handleDeactivateGroup(groupId: string) {
   font-size: 13px;
   font-weight: 700;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-btn);
   text-decoration: none;
 }

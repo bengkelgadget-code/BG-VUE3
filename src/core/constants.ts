@@ -1,5 +1,5 @@
 export const APP_NAME = 'BUKU KONTER';
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.2.0';
 export const TIMEZONE = 'Asia/Makassar'; // WITA (UTC+8)
 
 export const SERVICE_CODES = {

@@ -139,31 +139,81 @@
         </div>
       </div>
 
+      <!-- Section Pembaruan Aplikasi (OTA) -->
+      <div class="settings-card info-card">
+        <h3 class="card-title">Pembaruan Aplikasi (OTA)</h3>
+        <p class="app-statement">
+          Aplikasi mendukung pembaruan Over-The-Air (OTA) APK langsung dari GitHub Releases tanpa perlu instalasi ulang.
+        </p>
+        <div class="version-row">
+          <div class="app-version-badge">Versi {{ APP_VERSION }} (Fase 2 & 3)</div>
+          <button
+            type="button"
+            class="btn-check-update"
+            :disabled="isCheckingUpdate"
+            @click="handleCheckUpdate"
+          >
+            <RefreshCw class="btn-icon" :class="{ spinning: isCheckingUpdate }" />
+            <span>{{ isCheckingUpdate ? 'Memeriksa...' : 'Cek Pembaruan' }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Section Tentang Aplikasi -->
       <div class="settings-card info-card">
         <h3 class="card-title">Tentang BUKU KONTER</h3>
         <p class="app-statement">
           Aplikasi ini adalah <strong>murni pencatatan</strong> (buku kas & ledger catatan). Aplikasi ini tidak menjalankan transaksi pulsa/transfer langsung dan tidak mengubah saldo live di server pulsa, bank, atau e-wallet.
         </p>
-        <div class="app-version-badge">Versi {{ APP_VERSION }} (Fase 1 MVP)</div>
+        <div class="app-version-badge">Buku Konter © 2026 Bengkel Gadget</div>
       </div>
     </div>
+
+    <!-- Dialog Pembaruan OTA -->
+    <UpdateDialog
+      v-if="availableUpdate"
+      :update="availableUpdate"
+      @dismiss="availableUpdate = null"
+    />
   </AppScaffold>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { RefreshCw } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
+import UpdateDialog from '../components/UpdateDialog.vue';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { backupService } from '../services/backupService';
 import { authService } from '../services/authService';
+import { updateService, type VersionInfo } from '../services/updateService';
 import { APP_VERSION } from '../core/constants';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const settingsStore = useSettingsStore();
+
+const isCheckingUpdate = ref(false);
+const availableUpdate = ref<VersionInfo | null>(null);
+
+async function handleCheckUpdate() {
+  isCheckingUpdate.value = true;
+  errorMessage.value = '';
+  try {
+    const update = await updateService.checkForUpdate();
+    if (update) {
+      availableUpdate.value = update;
+    } else {
+      showSuccess(`Aplikasi sudah versi terbaru (v${APP_VERSION}).`);
+    }
+  } catch {
+    errorMessage.value = 'Gagal memeriksa pembaruan. Pastikan perangkat terhubung ke internet.';
+  } finally {
+    isCheckingUpdate.value = false;
+  }
+}
 
 const showPinModal = ref(false);
 const oldPin = ref('');
@@ -303,14 +353,14 @@ async function handleFileRestore(e: Event) {
   font-weight: 500;
 }
 .feedback-banner.success {
-  background: #ECFDF5;
-  border: 1px solid #A7F3D0;
-  color: #065F46;
+  background: var(--color-income-subtle);
+  border: 1px solid var(--color-income);
+  color: var(--color-income);
 }
 .feedback-banner.error {
-  background: #FEF2F2;
-  border: 1px solid #FECACA;
-  color: #991B1B;
+  background: var(--color-danger-subtle);
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
 }
 
 .settings-list {
@@ -467,9 +517,9 @@ async function handleFileRestore(e: Event) {
   display: block;
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid #FECACA;
-  background: #FEF2F2;
-  color: #B91C1C;
+  border: 1px solid var(--color-danger);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
   border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
@@ -522,5 +572,47 @@ async function handleFileRestore(e: Event) {
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid var(--border-color);
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.btn-check-update {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-check-update:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

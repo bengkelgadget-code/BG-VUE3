@@ -1,7 +1,7 @@
 {
-  "version_code": 1,
-  "version_name": "0.1.0",
+  "version_code": 2,
+  "version_name": "0.2.0",
   "download_url": "",
-  "changelog": "Inisialisasi rilis awal - Fase 0 Fondasi Buku Konter",
+  "changelog": "Pembaruan Fase 2 & Fase 3: Rantai OTA APK, UpdateService native, proteksi route audit-logs, dan tema token dark mode",
   "force_update": false
 }

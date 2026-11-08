@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Buku Konter</string>
+    <string name="title_activity_main">Buku Konter</string>
+    <string name="package_name">com.bengkel.bukukonter</string>
+    <string name="custom_url_scheme">com.bengkel.bukukonter</string>
+</resources>

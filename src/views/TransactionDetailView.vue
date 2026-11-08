@@ -305,7 +305,7 @@ async function handleVoid() {
 
 .summary-card {
   background: var(--gradient-saldo);
-  color: #ffffff;
+  color: var(--color-white);
   padding: 20px 16px;
   border-radius: var(--radius-card);
   display: flex;
@@ -316,7 +316,7 @@ async function handleVoid() {
 }
 
 .summary-card.card-void {
-  background: #6B7280;
+  background: var(--text-secondary);
 }
 
 .tx-service-badge {
@@ -522,7 +522,7 @@ async function handleVoid() {
   height: 44px;
   border: none;
   background: var(--color-danger);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-btn);
   font-weight: 700;
   cursor: pointer;

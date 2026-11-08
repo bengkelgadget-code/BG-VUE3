@@ -685,7 +685,7 @@ async function handleSubmit() {
 .btn-warn-action {
   padding: 6px 14px;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-chip);
   font-size: 12px;
   font-weight: 700;
@@ -846,7 +846,7 @@ async function handleSubmit() {
 
 .status-btn.active {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   font-weight: 700;
 }
 
@@ -902,7 +902,7 @@ async function handleSubmit() {
   border: none;
   border-radius: var(--radius-btn);
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
@@ -933,13 +933,13 @@ async function handleSubmit() {
 }
 
 .admin-tag {
-  background: var(--color-primary-subtle, rgba(37, 99, 235, 0.1));
-  color: var(--color-primary, #2563eb);
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
 }
 
 .kasir-tag {
-  background: var(--surface-card-subtle, #f3f4f6);
-  color: var(--text-secondary, #6b7280);
+  background: var(--surface-card-subtle);
+  color: var(--text-secondary);
 }
 
 .date-input {
@@ -947,8 +947,8 @@ async function handleSubmit() {
 }
 
 .disabled-input {
-  background: var(--surface-card-subtle, #f3f4f6);
-  color: var(--text-secondary, #6b7280);
+  background: var(--surface-card-subtle);
+  color: var(--text-secondary);
   cursor: not-allowed;
 }
 </style>

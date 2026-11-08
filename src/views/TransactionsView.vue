@@ -159,7 +159,7 @@ function openDetail(id: string) {
 
 .chip-btn.active {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-color: var(--color-primary);
 }
 
@@ -277,7 +277,7 @@ function openDetail(id: string) {
   font-size: 13px;
   font-weight: 700;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-btn);
   text-decoration: none;
 }

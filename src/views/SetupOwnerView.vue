@@ -158,7 +158,7 @@ async function handleSubmit() {
   height: 52px;
   border-radius: 14px;
   background: var(--gradient-saldo);
-  color: #ffffff;
+  color: var(--color-white);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -259,7 +259,7 @@ async function handleSubmit() {
   border: none;
   border-radius: var(--radius-btn);
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;

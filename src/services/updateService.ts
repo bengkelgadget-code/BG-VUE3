@@ -1,3 +1,6 @@
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+
 export interface VersionInfo {
   versionCode: number; // int, wajib naik tiap rilis
   versionName: string;
@@ -6,8 +9,14 @@ export interface VersionInfo {
   forceUpdate: boolean;
 }
 
+interface ApkInstallerPlugin {
+  install(options: { path: string }): Promise<void>;
+}
+
+const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller');
+
 export class UpdateService {
-  private currentVersionCode: number = 1;
+  private currentVersionCode: number = 2;
   private updateCheckUrl: string =
     'https://raw.githubusercontent.com/bengkelgadget-code/BG-VUE3/main/version.json';
 
@@ -62,26 +71,107 @@ export class UpdateService {
   }
 
   /**
-   * Unduh update APK dan luncurkan installer
+   * Unduh update APK sungguhan dan luncurkan installer native Android via Capacitor
    */
   public async downloadAndInstall(
     version: VersionInfo,
     onProgress: (pct: number) => void
   ): Promise<void> {
-    for (let p = 20; p <= 100; p += 20) {
-      onProgress(p);
-      await new Promise((resolve) => setTimeout(resolve, 30));
+    onProgress(0);
+
+    if (!version.downloadUrl) {
+      throw new Error('URL unduhan APK tidak valid.');
     }
 
-    if (
-      version.downloadUrl &&
-      typeof window !== 'undefined' &&
-      typeof window.open === 'function'
-    ) {
-      try {
-        window.open(version.downloadUrl, '_blank');
-      } catch {
-        // Abaikan pada environment testing tanpa window.open
+    const res = await fetch(version.downloadUrl);
+    if (!res.ok) {
+      throw new Error(`Gagal mengunduh file APK: HTTP ${res.status}`);
+    }
+
+    const contentLength = Number(res.headers.get('content-length')) || 0;
+    const reader = res.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let receivedBytes = 0;
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          receivedBytes += value.length;
+          if (contentLength > 0) {
+            const pct = Math.min(100, Math.round((receivedBytes / contentLength) * 100));
+            onProgress(pct);
+          }
+        }
+      }
+    } else {
+      const blob = await res.blob();
+      const buf = await blob.arrayBuffer();
+      chunks.push(new Uint8Array(buf));
+      receivedBytes = buf.byteLength;
+      onProgress(100);
+    }
+
+    onProgress(100);
+
+    const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+    const combined = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    // Simpan file APK ke cache filesystem
+    let binary = '';
+    const len = combined.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(combined[i]);
+    }
+    const base64Data = btoa(binary);
+
+    const fileName = 'buku-konter-update.apk';
+
+    try {
+      await Filesystem.writeFile({
+        path: fileName,
+        data: base64Data,
+        directory: Directory.Cache,
+      });
+
+      if (Capacitor.isNativePlatform()) {
+        const uriResult = await Filesystem.getUri({
+          path: fileName,
+          directory: Directory.Cache,
+        });
+        const cleanPath = uriResult.uri.replace(/^file:\/\//, '');
+        await ApkInstaller.install({ path: cleanPath });
+      } else {
+        // Fallback untuk browser web / development
+        if (typeof document !== 'undefined') {
+          const blob = new Blob([combined], { type: 'application/vnd.android.package-archive' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+      }
+    } catch (err: unknown) {
+      // Fallback toleran jika Filesystem bridge tidak aktif di environment testing
+      if (typeof window !== 'undefined' && typeof window.open === 'function' && !Capacitor.isNativePlatform()) {
+        try {
+          window.open(version.downloadUrl, '_blank');
+        } catch {
+          // Abaikan pada environment testing tanpa window.open
+        }
+      } else if (err instanceof Error) {
+        throw err;
       }
     }
   }

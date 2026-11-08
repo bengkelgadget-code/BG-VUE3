@@ -324,10 +324,27 @@ function renderDonutChart() {
 
   const labels = reportStore.byLayanan.map((l) => formatLayanan(l.label));
   const data = reportStore.byLayanan.map((l) => l.total);
+  const getThemeColor = (varName: string, fallback: string): string => {
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      return val || fallback;
+    }
+    return fallback;
+  };
+
   const colors = [
-    '#2563EB', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
-    '#06B6D4', '#F97316', '#64748B', '#14B8A6', '#6366F1',
-    '#84CC16', '#A855F7',
+    getThemeColor('--chart-c1', 'rgb(37, 99, 235)'),
+    getThemeColor('--chart-c2', 'rgb(16, 185, 129)'),
+    getThemeColor('--chart-c3', 'rgb(245, 158, 11)'),
+    getThemeColor('--chart-c4', 'rgb(139, 92, 246)'),
+    getThemeColor('--chart-c5', 'rgb(236, 72, 153)'),
+    getThemeColor('--chart-c6', 'rgb(6, 182, 212)'),
+    getThemeColor('--chart-c7', 'rgb(249, 115, 22)'),
+    getThemeColor('--chart-c8', 'rgb(100, 116, 139)'),
+    getThemeColor('--chart-c9', 'rgb(20, 184, 166)'),
+    getThemeColor('--chart-c10', 'rgb(99, 102, 241)'),
+    getThemeColor('--chart-c11', 'rgb(132, 204, 22)'),
+    getThemeColor('--chart-c12', 'rgb(168, 85, 247)'),
   ];
 
   donutChart = new Chart(donutCanvasRef.value, {
@@ -339,7 +356,7 @@ function renderDonutChart() {
           data,
           backgroundColor: colors.slice(0, data.length),
           borderWidth: 2,
-          borderColor: '#FFFFFF',
+          borderColor: getThemeColor('--surface-card', 'rgb(255, 255, 255)'),
         },
       ],
     },
@@ -392,7 +409,9 @@ function renderBarChart() {
         {
           label: seriesLabel,
           data,
-          backgroundColor: '#2563EB',
+          backgroundColor: (typeof window !== 'undefined' && typeof document !== 'undefined')
+            ? getComputedStyle(document.documentElement).getPropertyValue('--chart-c1').trim() || 'rgb(37, 99, 235)'
+            : 'rgb(37, 99, 235)',
           borderRadius: 6,
         },
       ],
@@ -518,14 +537,14 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 .alert-box.warning {
-  background: #FFFBEB;
-  border: 1px solid #FDE68A;
-  color: #92400E;
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning);
 }
 .alert-box.info {
-  background: #EFF6FF;
-  border: 1px solid #BFDBFE;
-  color: #1E40AF;
+  background: var(--color-info-subtle);
+  border: 1px solid var(--color-info-border);
+  color: var(--color-info-dark);
 }
 .alert-title {
   font-weight: 700;

@@ -332,8 +332,8 @@ async function handleSubmit() {
 }
 
 .diff-lebih {
-  background: #E0E7FF;
-  color: #4338CA;
+  background: var(--color-indigo-subtle);
+  color: var(--color-indigo);
 }
 
 .diff-kurang {
@@ -359,7 +359,7 @@ async function handleSubmit() {
   border: none;
   border-radius: var(--radius-btn);
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;

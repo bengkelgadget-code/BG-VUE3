@@ -10,5 +10,4 @@ dist-ssr/
 *.njsproj
 *.sln
 *.sw?
-android/
 .DS_Store

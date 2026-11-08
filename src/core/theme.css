@@ -20,6 +20,38 @@
   --border-color: #E5E7EB;
   --border-focus: #059669;
 
+  /* General text colors */
+  --color-white: #FFFFFF;
+  --text-on-primary: #FFFFFF;
+  --text-on-danger: #FFFFFF;
+
+  /* Accent & Action colors */
+  --color-info: #0284C7;
+  --color-info-subtle: #E0F2FE;
+  --color-info-border: #BFDBFE;
+  --color-info-dark: #1E40AF;
+
+  --color-whatsapp: #25D366;
+  --color-indigo: #4338CA;
+  --color-indigo-subtle: #E0E7FF;
+  
+  --color-amber: #D97706;
+  --color-purple: #7C3AED;
+
+  /* Chart palette tokens */
+  --chart-c1: #2563EB;
+  --chart-c2: #10B981;
+  --chart-c3: #F59E0B;
+  --chart-c4: #8B5CF6;
+  --chart-c5: #EC4899;
+  --chart-c6: #06B6D4;
+  --chart-c7: #F97316;
+  --chart-c8: #64748B;
+  --chart-c9: #14B8A6;
+  --chart-c10: #6366F1;
+  --chart-c11: #84CC16;
+  --chart-c12: #A855F7;
+
   /* Typography & Radius */
   --font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --radius-card: 20px;
@@ -59,6 +91,38 @@
   --text-muted: #6B7280;
   --border-color: #2D3139;
   --border-focus: #34D399;
+
+  /* General text colors */
+  --color-white: #FFFFFF;
+  --text-on-primary: #0F1115;
+  --text-on-danger: #FFFFFF;
+
+  /* Accent & Action colors */
+  --color-info: #38BDF8;
+  --color-info-subtle: #082F49;
+  --color-info-border: #0369A1;
+  --color-info-dark: #7DD3FC;
+
+  --color-whatsapp: #22C55E;
+  --color-indigo: #818CF8;
+  --color-indigo-subtle: #1E1B4B;
+
+  --color-amber: #FBBF24;
+  --color-purple: #C084FC;
+
+  /* Chart palette tokens (dark mode) */
+  --chart-c1: #3B82F6;
+  --chart-c2: #34D399;
+  --chart-c3: #FBBF24;
+  --chart-c4: #A78BFA;
+  --chart-c5: #F472B6;
+  --chart-c6: #22D3EE;
+  --chart-c7: #FB923C;
+  --chart-c8: #94A3B8;
+  --chart-c9: #2DD4BF;
+  --chart-c10: #818CF8;
+  --chart-c11: #A3E635;
+  --chart-c12: #C084FC;
 }
 
 * {

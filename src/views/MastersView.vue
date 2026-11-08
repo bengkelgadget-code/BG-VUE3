@@ -112,7 +112,7 @@ const filteredProducts = computed(() => {
 .btn-add {
   padding: 8px 14px;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-chip);
   font-size: 12px;
   font-weight: 700;
@@ -145,7 +145,7 @@ const filteredProducts = computed(() => {
 
 .cat-tab.active {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-color: var(--color-primary);
 }
 
@@ -218,7 +218,7 @@ const filteredProducts = computed(() => {
   font-size: 13px;
   font-weight: 700;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-btn);
   text-decoration: none;
 }

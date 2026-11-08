@@ -11,25 +11,25 @@ export interface ThemeTokens {
 }
 
 export const lightTokens: ThemeTokens = {
-  bgApp: '#F6F7F9',
-  surfaceCard: '#FFFFFF',
-  colorPrimary: '#059669',
-  colorIncome: '#16A34A',
-  colorExpense: '#F97316',
-  colorDanger: '#E11D48',
-  colorWarning: '#F59E0B',
-  textMain: '#111827',
-  textSecondary: '#6B7280',
+  bgApp: 'var(--bg-app)',
+  surfaceCard: 'var(--surface-card)',
+  colorPrimary: 'var(--color-primary)',
+  colorIncome: 'var(--color-income)',
+  colorExpense: 'var(--color-expense)',
+  colorDanger: 'var(--color-danger)',
+  colorWarning: 'var(--color-warning)',
+  textMain: 'var(--text-main)',
+  textSecondary: 'var(--text-secondary)',
 };
 
 export const darkTokens: ThemeTokens = {
-  bgApp: '#0F1115',
-  surfaceCard: '#1C1E22',
-  colorPrimary: '#34D399',
-  colorIncome: '#4ADE80',
-  colorExpense: '#FB923C',
-  colorDanger: '#F43F5E',
-  colorWarning: '#FBBF24',
-  textMain: '#F9FAFB',
-  textSecondary: '#9CA3AF',
+  bgApp: 'var(--bg-app)',
+  surfaceCard: 'var(--surface-card)',
+  colorPrimary: 'var(--color-primary)',
+  colorIncome: 'var(--color-income)',
+  colorExpense: 'var(--color-expense)',
+  colorDanger: 'var(--color-danger)',
+  colorWarning: 'var(--color-warning)',
+  textMain: 'var(--text-main)',
+  textSecondary: 'var(--text-secondary)',
 };

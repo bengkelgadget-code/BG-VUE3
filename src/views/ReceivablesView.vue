@@ -266,8 +266,8 @@ onMounted(async () => {
   color: var(--text-muted);
 }
 .age-badge.old-debt {
-  background: #FEE2E2;
-  color: #B91C1C;
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 .debt-phone {
   font-size: 12px;
@@ -314,8 +314,8 @@ onMounted(async () => {
   cursor: pointer;
 }
 .btn-wa-reminder {
-  background: #25D366;
-  color: white;
+  background: var(--color-whatsapp);
+  color: var(--color-white);
   border-radius: 6px;
   padding: 6px 8px;
   font-size: 11px;
@@ -386,8 +386,8 @@ onMounted(async () => {
 .error-banner {
   padding: 8px 12px;
   border-radius: 6px;
-  background: #FEF2F2;
-  color: #991B1B;
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
   font-size: 12px;
   margin-bottom: 12px;
 }

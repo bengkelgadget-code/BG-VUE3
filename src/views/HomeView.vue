@@ -285,7 +285,7 @@ onMounted(async () => {
 
 .saldo-card {
   background: var(--gradient-saldo);
-  color: #ffffff;
+  color: var(--color-white);
   padding: 20px 18px;
   border-radius: var(--radius-card);
   box-shadow: 0 8px 24px rgba(5, 150, 105, 0.25);
@@ -388,10 +388,10 @@ onMounted(async () => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-.action-icon-box.transfer { color: #0284C7; }
-.action-icon-box.tarik { color: #16A34A; }
-.action-icon-box.pulsa { color: #D97706; }
-.action-icon-box.ewallet { color: #7C3AED; }
+.action-icon-box.transfer { color: var(--color-info); }
+.action-icon-box.tarik { color: var(--color-income); }
+.action-icon-box.pulsa { color: var(--color-amber); }
+.action-icon-box.ewallet { color: var(--color-purple); }
 
 .action-icon-box .icon {
   width: 24px;
@@ -444,7 +444,7 @@ onMounted(async () => {
   font-size: 12px;
   font-weight: 700;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-white);
   border-radius: var(--radius-btn);
   text-decoration: none;
 }
