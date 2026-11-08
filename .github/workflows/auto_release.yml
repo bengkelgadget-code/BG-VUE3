@@ -8,6 +8,8 @@ on:
       - 'version.json'
       - 'package.json'
       - 'src/**'
+      - 'android/**'
+      - '.github/workflows/**'
 
 jobs:
   build-and-release:
@@ -33,7 +35,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
       - name: Install Dependencies
         run: npm ci
@@ -91,7 +93,8 @@ jobs:
 
       - name: Decode Keystore & Configure Signing
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\r\n ' | base64 -d > android/app/release.keystore
+          cp android/app/release.keystore android/release.keystore
           cat <<EOF > android/key.properties
           storeFile=release.keystore
           storePassword=${{ secrets.KEYSTORE_PASSWORD }}
@@ -103,7 +106,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease -PversionCode=${{ steps.version_info.outputs.code }} -PversionName="${{ steps.version_info.outputs.name }}"
+          ./gradlew assembleRelease -PversionCode=${{ steps.version_info.outputs.code }} -PversionName="${{ steps.version_info.outputs.name }}" --stacktrace
           cd ..
           cp android/app/build/outputs/apk/release/app-release.apk buku-konter-v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}.apk
 
