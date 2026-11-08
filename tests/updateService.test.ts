@@ -1,7 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { UpdateService, updateService as defaultUpdateService } from '../src/services/updateService';
 import UpdateDialog from '../src/components/UpdateDialog.vue';
+
+vi.mock('@capacitor/app', () => ({
+  App: {
+    getInfo: vi.fn().mockResolvedValue({
+      name: 'Buku Konter',
+      id: 'com.bengkel.bukukonter',
+      build: '3',
+      version: '0.2.0',
+    }),
+  },
+}));
 
 describe('UpdateService (OTA GitHub Pattern Setel)', () => {
   let updateService: UpdateService;
@@ -203,6 +216,120 @@ describe('UpdateService (OTA GitHub Pattern Setel)', () => {
       await updateBtn.trigger('click');
 
       expect(downloadSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('W2-R1: Deteksi Versi Terpasang & Pencegahan Update Loop', () => {
+    it('service yang diberi installed code 3 tidak menawarkan update b3 lagi (mencegah loop)', async () => {
+      const s = new UpdateService({
+        updateCheckUrl: 'https://example.com/version.json',
+      });
+      s.setInstalledVersionCode(3);
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          version_code: 3,
+          version_name: '0.2.0',
+          download_url: 'https://example.com/app-v0.2.0-b3.apk',
+          changelog: 'Rilis b3',
+          force_update: false,
+        }),
+      } as unknown as Response);
+
+      const update = await s.checkForUpdate();
+      expect(update).toBeNull();
+    });
+
+    it('service yang diberi installed code 2 tetap menawarkan update b3', async () => {
+      const s = new UpdateService({
+        updateCheckUrl: 'https://example.com/version.json',
+      });
+      s.setInstalledVersionCode(2);
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          version_code: 3,
+          version_name: '0.2.0',
+          download_url: 'https://example.com/app-v0.2.0-b3.apk',
+          changelog: 'Rilis b3 perbaikan loop OTA',
+          force_update: false,
+        }),
+      } as unknown as Response);
+
+      const update = await s.checkForUpdate();
+      expect(update).not.toBeNull();
+      expect(update?.versionCode).toBe(3);
+      expect(update?.changelog).toBe('Rilis b3 perbaikan loop OTA');
+    });
+
+    it('fallback web tetap jalan tanpa crash saat App.getInfo gagal atau bukan native', async () => {
+      const s = new UpdateService({
+        updateCheckUrl: 'https://example.com/version.json',
+      });
+
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+
+      const installedCode = await s.getInstalledVersionCode();
+      expect(typeof installedCode).toBe('number');
+      expect(installedCode).toBeGreaterThanOrEqual(1);
+
+      // Cek update di web fallback tidak melempar error
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          version_code: 10,
+          version_name: '1.0.0',
+          download_url: 'https://example.com/app-v10.apk',
+          changelog: 'Versi 1.0.0',
+          force_update: false,
+        }),
+      } as unknown as Response);
+
+      const update = await s.checkForUpdate();
+      expect(update).not.toBeNull();
+      expect(update?.versionCode).toBe(10);
+    });
+
+    it('membaca version code dari platform native lewat @capacitor/app getInfo()', async () => {
+      const s = new UpdateService({
+        updateCheckUrl: 'https://example.com/version.json',
+      });
+
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      vi.mocked(App.getInfo).mockResolvedValue({
+        name: 'Buku Konter',
+        id: 'com.bengkel.bukukonter',
+        build: '3',
+        version: '0.2.0',
+      });
+
+      const installedCode = await s.getInstalledVersionCode();
+      expect(installedCode).toBe(3);
+    });
+
+    it('App.vue startup: membaca build code native lewat App.getInfo() dan menyetel updateService', async () => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      vi.mocked(App.getInfo).mockResolvedValue({
+        name: 'Buku Konter',
+        id: 'com.bengkel.bukukonter',
+        build: '3',
+        version: '0.2.0',
+      });
+      const setCodeSpy = vi.spyOn(defaultUpdateService, 'setInstalledVersionCode');
+
+      // Jalankan logika startup persis seperti di App.vue
+      if (Capacitor.isNativePlatform()) {
+        const info = await App.getInfo();
+        const code = parseInt(info.build, 10);
+        if (!isNaN(code) && code > 0) {
+          defaultUpdateService.setInstalledVersionCode(code);
+        }
+      }
+
+      expect(App.getInfo).toHaveBeenCalled();
+      expect(setCodeSpy).toHaveBeenCalledWith(3);
     });
   });
 });

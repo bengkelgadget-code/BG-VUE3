@@ -1,7 +1,7 @@
 {
-  "version_code": 2,
+  "version_code": 3,
   "version_name": "0.2.0",
   "download_url": "",
-  "changelog": "Pembaruan Fase 2 & Fase 3: Rantai OTA APK, UpdateService native, proteksi route audit-logs, dan tema token dark mode",
+  "changelog": "Pembaruan rilis perdana: Proteksi update loop OTA dengan pembacaan version code native @capacitor/app, gate void admin PIN, dan dark mode token",
   "force_update": false
 }

@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { App } from '@capacitor/app';
 
 export interface VersionInfo {
   versionCode: number; // int, wajib naik tiap rilis
@@ -15,14 +16,19 @@ interface ApkInstallerPlugin {
 
 const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller');
 
+// Fallback jika di lingkungan web/dev tanpa platform native
+export const DEFAULT_WEB_FALLBACK_VERSION_CODE = 3;
+
 export class UpdateService {
-  private currentVersionCode: number = 2;
+  private currentVersionCode: number = DEFAULT_WEB_FALLBACK_VERSION_CODE;
+  private isManuallySet: boolean = false;
   private updateCheckUrl: string =
     'https://raw.githubusercontent.com/bengkelgadget-code/BG-VUE3/main/version.json';
 
   constructor(opts?: { currentVersionCode?: number; updateCheckUrl?: string }) {
     if (opts?.currentVersionCode !== undefined) {
       this.currentVersionCode = opts.currentVersionCode;
+      this.isManuallySet = true;
     }
     if (opts?.updateCheckUrl !== undefined) {
       this.updateCheckUrl = opts.updateCheckUrl;
@@ -35,9 +41,36 @@ export class UpdateService {
 
   public setInstalledVersionCode(code: number): void {
     this.currentVersionCode = code;
+    this.isManuallySet = true;
+  }
+
+  /**
+   * Menyinkronkan version code dari info build native via @capacitor/app.
+   * Hanya dijalankan jika berada di platform native dan belum di-override secara manual.
+   */
+  public async syncInstalledVersionCode(): Promise<number> {
+    if (this.isManuallySet) {
+      return this.currentVersionCode;
+    }
+
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const info = await App.getInfo();
+        const buildCode = parseInt(info.build, 10);
+        if (!isNaN(buildCode) && buildCode > 0) {
+          this.currentVersionCode = buildCode;
+        }
+      }
+    } catch (err) {
+      console.warn('Fallback web/dev mode: gagal membaca info native App.getInfo', err);
+    }
+    return this.currentVersionCode;
   }
 
   public async getInstalledVersionCode(): Promise<number> {
+    if (!this.isManuallySet) {
+      await this.syncInstalledVersionCode();
+    }
     return this.currentVersionCode;
   }
 
@@ -48,12 +81,13 @@ export class UpdateService {
    */
   public async checkForUpdate(): Promise<VersionInfo | null> {
     try {
+      const installedCode = await this.getInstalledVersionCode();
+
       const res = await fetch(this.updateCheckUrl);
       if (!res.ok) return null;
       const data = await res.json();
 
       const remoteCode = Number(data.version_code ?? data.versionCode);
-      const installedCode = await this.getInstalledVersionCode();
 
       if (remoteCode > installedCode) {
         return {
