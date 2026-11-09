@@ -166,12 +166,11 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
     expect(saldoKas).toBe(750000);
   });
 
-  it('transaksi transfer Rp500.000 Debit Rekening: bank -Rp495.000, Kas +Rp500.000', async () => {
+  it('transaksi transfer Rp500.000 Debit Rekening: paymentAccount auto-derive ke sourceAccountId (Bank net +Rp5.000, Kas tidak berubah)', async () => {
     await transactionService.addTransaction(
       {
         layanan: 'transfer',
         sourceAccountId: bankId,
-        accountId: kasId,
         nominal: 500000,
         fee: 5000,
         feePaidBy: 'debit_rekening',
@@ -183,13 +182,56 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
       { actorUserId: 'kasir-1', shiftId: 'shift-1' }
     );
 
-    // Bank keluar Rp495.000 (10.000.000 -> 9.505.000)
+    // Bank: keluar modal 495.000, masuk jual 500.000 -> net +5.000 (10.000.000 -> 10.005.000)
     const saldoBank = await accountService.getBalance(bankId);
-    expect(saldoBank).toBe(9505000);
+    expect(saldoBank).toBe(10005000);
 
-    // Kas masuk Rp500.000 (750.000 -> 1.250.000)
+    // Kas tidak tersentuh (tetap 750.000)
     const saldoKas = await accountService.getBalance(kasId);
-    expect(saldoKas).toBe(1250000);
+    expect(saldoKas).toBe(750000);
+  });
+
+  it('transaksi transfer Rp500.000 Cash: paymentAccount auto-derive ke Kas (Bank -Rp500.000, Kas +Rp505.000)', async () => {
+    await transactionService.addTransaction(
+      {
+        layanan: 'transfer',
+        sourceAccountId: bankId,
+        nominal: 500000,
+        fee: 5000,
+        feePaidBy: 'cash',
+        feeManualOverride: false,
+        paymentMethod: 'tunai',
+        paymentStatus: 'lunas',
+        date: Date.now(),
+      },
+      { actorUserId: 'kasir-1', shiftId: 'shift-1' }
+    );
+
+    // Bank: keluar modal 500.000 (10.000.000 -> 9.500.000)
+    const saldoBank = await accountService.getBalance(bankId);
+    expect(saldoBank).toBe(9500000);
+
+    // Kas: masuk jual 505.000 (750.000 -> 1.255.000)
+    const saldoKas = await accountService.getBalance(kasId);
+    expect(saldoKas).toBe(1255000);
+  });
+
+  it('transaksi Debit Rekening tanpa sourceAccountId ditolak dengan AppError', async () => {
+    await expect(
+      transactionService.addTransaction(
+        {
+          layanan: 'transfer',
+          nominal: 100000,
+          fee: 3000,
+          feePaidBy: 'debit_rekening',
+          feeManualOverride: false,
+          paymentMethod: 'tunai',
+          paymentStatus: 'lunas',
+          date: Date.now(),
+        },
+        { actorUserId: 'kasir-1', shiftId: 'shift-1' }
+      )
+    ).rejects.toThrow('membutuhkan akun sumber dana');
   });
 
   it('transaksi hutang wajib memilih pelanggan, dan menambah balanceHutang pelanggan', async () => {

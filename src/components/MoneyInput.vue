@@ -8,6 +8,7 @@
           <span class="currency-prefix">Rp</span>
           <input
             :id="id"
+            ref="nominalInputRef"
             type="text"
             inputmode="numeric"
             class="input-box nominal-input tabular-nums"
@@ -15,6 +16,7 @@
             :placeholder="placeholder || '0'"
             :disabled="disabled"
             @input="onNominalInput"
+            @keydown.enter.prevent="onNominalEnter"
           />
         </div>
       </div>
@@ -29,6 +31,7 @@
         <div class="input-wrapper">
           <span class="currency-prefix">Rp</span>
           <input
+            ref="adminInputRef"
             type="text"
             inputmode="numeric"
             class="input-box admin-input tabular-nums"
@@ -36,6 +39,7 @@
             placeholder="0"
             :disabled="disabled"
             @input="onFeeInput"
+            @keydown.enter.prevent="onAdminEnter"
           />
         </div>
       </div>
@@ -69,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { parseRupiah } from '../utils/format';
 
 const props = withDefaults(
@@ -103,7 +107,26 @@ const emit = defineEmits<{
   (e: 'update:fee', val: number): void;
   (e: 'update:feePaidBy', val: 'cash' | 'debit_rekening'): void;
   (e: 'overrideFee', val: number): void;
+  (e: 'enter'): void;
+  (e: 'adminEnter'): void;
 }>();
+
+const nominalInputRef = ref<HTMLInputElement | null>(null);
+const adminInputRef = ref<HTMLInputElement | null>(null);
+
+function focusNominal() {
+  nominalInputRef.value?.focus();
+}
+
+function focusAdmin() {
+  adminInputRef.value?.focus();
+}
+
+defineExpose({
+  focusNominal,
+  focusAdmin,
+  focus: focusNominal,
+});
 
 const displayNominal = computed(() => {
   if (!props.modelValue && props.modelValue !== 0) return '';
@@ -122,11 +145,19 @@ function onNominalInput(event: Event) {
   emit('update:modelValue', parsed);
 }
 
+function onNominalEnter() {
+  emit('enter');
+}
+
 function onFeeInput(event: Event) {
   const target = event.target as HTMLInputElement;
   const parsed = parseRupiah(target.value);
   emit('update:fee', parsed);
   emit('overrideFee', parsed);
+}
+
+function onAdminEnter() {
+  emit('adminEnter');
 }
 
 function setFeePaidBy(method: 'cash' | 'debit_rekening') {

@@ -64,9 +64,17 @@ export class TransactionService {
       }
     }
 
-    // Tentukan paymentAccountId (default akun Kas bila tidak ditentukan)
-    let paymentAccountId = input.accountId;
-    if (!paymentAccountId) {
+    // 9 Nov 2026: Turunkan paymentAccountId otomatis dari cara bayar admin (feePaidBy)
+    let paymentAccountId: string;
+    const hasFeePaidBy = ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(input.layanan);
+
+    if (input.layanan !== 'tarik_tunai' && hasFeePaidBy && input.feePaidBy === 'debit_rekening') {
+      if (!input.sourceAccountId) {
+        throw new AppError(`Transaksi ${input.layanan} dengan Debit Rekening membutuhkan akun sumber dana.`);
+      }
+      paymentAccountId = input.sourceAccountId;
+    } else {
+      // Cash, tarik_tunai, atau layanan tanpa Bayar Admin (voucher, perdana, aksesoris, pulsa, data, token_pln, operasional, pindah_dana, deposit)
       const kasAccount = await db.accounts.where('type').equals('kas').first();
       if (!kasAccount) {
         throw new AppError('Belum ada akun Kas. Tambahkan akun Kas terlebih dahulu.');

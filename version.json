@@ -1,7 +1,7 @@
 {
-  "version_code": 3,
+  "version_code": 4,
   "version_name": "0.2.0",
-  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b3/buku-konter-v0.2.0-b3.apk",
-  "changelog": "Pembaruan rilis perdana: Proteksi update loop OTA dengan pembacaan version code native @capacitor/app, gate void admin PIN, dan dark mode token",
+  "download_url": "",
+  "changelog": "Form Tambah Transaksi: dropdown layanan bisa dicari, auto-fokus antar field, hapus popup Total Transaksi, akun penerima otomatis",
   "force_update": false
 }

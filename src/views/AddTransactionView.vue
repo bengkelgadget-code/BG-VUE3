@@ -1,53 +1,118 @@
 <template>
-  <AppScaffold>
+  <AppScaffold title="Tambah Transaksi">
     <div class="add-tx-container">
+      <!-- Header Ringkas -->
       <div class="view-header">
-        <h2 class="page-title">Tambah Transaksi</h2>
-        <span class="tx-time">{{ currentWitaTime }}</span>
+        <h1 class="page-title">Transaksi Baru</h1>
+        <span class="tx-time">{{ currentWitaTime }} WITA</span>
       </div>
 
-      <!-- Warning Bila Belum Buka Shift -->
+      <!-- Peringatan Jika Shift Belum Dibuka -->
       <div v-if="!activeShiftId" class="shift-warning-banner">
         <AlertCircle class="warn-icon" />
         <div class="warn-content">
           <span class="warn-title">Shift Belum Dibuka</span>
-          <span class="warn-desc">Anda harus membuka shift terlebih dahulu untuk mencatat transaksi.</span>
+          <span class="warn-desc">Buka shift kasir terlebih dahulu untuk mencatat transaksi konter.</span>
         </div>
-        <router-link to="/shifts/open" class="btn-warn-action">Buka Shift</router-link>
+        <router-link to="/shifts" class="btn-warn-action">Buka Shift</router-link>
       </div>
 
       <form v-else class="tx-form" @submit.prevent="handleSubmit">
+        <!-- Error Banner Form -->
         <div v-if="errorMessage" class="error-banner">
           {{ errorMessage }}
         </div>
 
-        <!-- 1. Pilihan Jenis Layanan (Grid Tombol Ikon) -->
+        <!-- 1. Pilihan Jenis Layanan (Dropdown Searchable / Filterable) -->
         <div class="form-section">
-          <label class="section-label">Pilih Jenis Layanan</label>
-          <div class="service-grid">
+          <label class="section-label" for="service-combobox-trigger">Pilih Jenis Layanan</label>
+          <div ref="comboboxContainerRef" class="service-combobox-container">
+            <!-- Trigger Button -->
             <button
-              v-for="s in primaryServices"
-              :key="s.code"
+              id="service-combobox-trigger"
+              ref="layananTriggerRef"
               type="button"
-              class="service-btn"
-              :class="{ active: layanan === s.code }"
-              @click="selectService(s.code)"
+              class="service-combobox-trigger"
+              :class="{ open: isDropdownOpen }"
+              aria-haspopup="listbox"
+              :aria-expanded="isDropdownOpen"
+              data-testid="service-dropdown-trigger"
+              @click="toggleDropdown"
+              @keydown.down.prevent="openDropdown"
+              @keydown.enter.prevent="toggleDropdown"
             >
-              <component :is="s.icon" class="s-icon" />
-              <span class="s-label">{{ s.label }}</span>
+              <div class="trigger-selected">
+                <component :is="selectedServiceObj?.icon" class="s-icon" />
+                <span class="s-label">{{ selectedServiceObj?.label || 'Pilih Layanan' }}</span>
+              </div>
+              <ChevronDown class="chevron-icon" :class="{ rotated: isDropdownOpen }" />
             </button>
+
+            <!-- Dropdown Menu -->
+            <div
+              v-if="isDropdownOpen"
+              class="service-dropdown-menu"
+              role="listbox"
+              data-testid="service-dropdown-menu"
+            >
+              <div class="dropdown-search-wrapper">
+                <Search class="search-icon" />
+                <input
+                  ref="searchInputRef"
+                  v-model="searchQuery"
+                  type="text"
+                  class="dropdown-search-input"
+                  placeholder="Cari layanan..."
+                  data-testid="input-cari-layanan"
+                  @keydown.down.prevent="moveHighlight(1)"
+                  @keydown.up.prevent="moveHighlight(-1)"
+                  @keydown.enter.prevent="selectHighlighted"
+                  @keydown.esc.prevent="closeDropdown"
+                />
+              </div>
+
+              <ul class="service-options-list">
+                <li
+                  v-for="(s, index) in filteredServices"
+                  :key="s.code"
+                  role="option"
+                  :aria-selected="layanan === s.code"
+                  class="service-option-item"
+                  :class="{
+                    active: layanan === s.code,
+                    highlighted: index === highlightedIndex,
+                  }"
+                  :data-testid="`service-option-${s.code}`"
+                  @click="onSelectOption(s.code)"
+                  @mouseenter="highlightedIndex = index"
+                >
+                  <component :is="s.icon" class="s-icon-sm" />
+                  <span class="s-option-label">{{ s.label }}</span>
+                  <Check v-if="layanan === s.code" class="check-icon" />
+                </li>
+                <li v-if="filteredServices.length === 0" class="no-options-item">
+                  Tidak ada layanan yang cocok
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
 
         <!-- 2. Detail Cascading Sesuai Jenis Layanan -->
         <div class="form-section card-section">
-          <!-- Layanan Transfer / Tarik Tunai / Top Up -->
-          <div v-if="['transfer', 'tarik_tunai', 'topup_ewallet'].includes(layanan)" class="cascading-fields">
+          <!-- Layanan Transfer / Tarik Tunai / Top Up / PPOB -->
+          <div v-if="['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(layanan)" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">
                 {{ layanan === 'tarik_tunai' ? 'Rekening Konter Penerima Transfer' : 'Sumber Dana Konter' }}
               </label>
-              <select v-model="sourceAccountId" class="form-select" required>
+              <select
+                ref="sourceAccountRef"
+                v-model="sourceAccountId"
+                class="form-select"
+                required
+                @change="onSourceAccountChanged"
+              >
                 <option disabled value="">-- Pilih Akun Bank / E-Wallet --</option>
                 <option v-for="acc in availableBankAccounts" :key="acc.id" :value="acc.id">
                   {{ acc.name }} (Saldo: {{ formatRupiah(accountBalances[acc.id] || acc.initialBalance) }})
@@ -58,20 +123,36 @@
             <div v-if="layanan === 'transfer'" class="form-group">
               <label class="form-label">Nama Bank & No. Rekening Tujuan</label>
               <input
+                ref="referenceNoRef"
                 v-model="referenceNo"
                 type="text"
                 class="form-input"
                 placeholder="Contoh: BCA 123456789 a.n. Budi"
+                @keydown.enter.prevent="focusElement(moneyInputRef)"
               />
             </div>
 
             <div v-if="layanan === 'topup_ewallet'" class="form-group">
               <label class="form-label">Nomor HP / Akun Tujuan</label>
               <input
+                ref="referenceNoRef"
                 v-model="referenceNo"
                 type="tel"
                 class="form-input"
                 placeholder="Contoh: DANA 08123456789"
+                @keydown.enter.prevent="focusElement(moneyInputRef)"
+              />
+            </div>
+
+            <div v-if="layanan === 'ppob'" class="form-group">
+              <label class="form-label">ID Pelanggan / Nomor Tagihan</label>
+              <input
+                ref="referenceNoRef"
+                v-model="referenceNo"
+                type="text"
+                class="form-input"
+                placeholder="Nomor kontrak / ID tagihan"
+                @keydown.enter.prevent="focusElement(moneyInputRef)"
               />
             </div>
           </div>
@@ -80,7 +161,13 @@
           <div v-else-if="['voucher', 'perdana', 'aksesoris'].includes(layanan)" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Pilih Barang dari Master Produk</label>
-              <select v-model="selectedProductId" class="form-select" required @change="onProductSelected">
+              <select
+                ref="productSelectRef"
+                v-model="selectedProductId"
+                class="form-select"
+                required
+                @change="onProductSelected"
+              >
                 <option disabled value="">-- Pilih Produk --</option>
                 <option v-for="p in availablePhysicalProducts" :key="p.id" :value="p.id">
                   {{ p.name }} (Harga: {{ formatRupiah(p.hargaJual) }} | Stok: {{ p.stock ?? 0 }})
@@ -93,7 +180,13 @@
           <div v-else-if="['pulsa', 'data', 'token_pln'].includes(layanan)" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Akun Server Pulsa Catatan</label>
-              <select v-model="sourceAccountId" class="form-select" required>
+              <select
+                ref="sourceAccountRef"
+                v-model="sourceAccountId"
+                class="form-select"
+                required
+                @change="onSourceAccountChanged"
+              >
                 <option disabled value="">-- Pilih Server Pulsa --</option>
                 <option v-for="acc in serverAccounts" :key="acc.id" :value="acc.id">
                   {{ acc.name }} (Saldo catatan: {{ formatRupiah(accountBalances[acc.id] || acc.initialBalance) }})
@@ -104,17 +197,25 @@
             <div class="form-group">
               <label class="form-label">Nomor Tujuan / ID Pelanggan</label>
               <input
+                ref="referenceNoRef"
                 v-model="referenceNo"
                 type="tel"
                 class="form-input"
                 placeholder="0812xxxx atau No. Meter"
                 required
+                @keydown.enter.prevent="onReferenceNoEnter"
               />
             </div>
 
             <div class="form-group">
               <label class="form-label">Pilih Produk Digital dari Master</label>
-              <select v-model="selectedProductId" class="form-select" required @change="onProductSelected">
+              <select
+                ref="productSelectRef"
+                v-model="selectedProductId"
+                class="form-select"
+                required
+                @change="onProductSelected"
+              >
                 <option disabled value="">-- Pilih Produk Master --</option>
                 <option v-for="p in availableDigitalProducts" :key="p.id" :value="p.id">
                   {{ p.name }} (Harga: {{ formatRupiah(p.hargaJual) }})
@@ -130,7 +231,13 @@
           <div v-else-if="layanan === 'operasional'" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Sumber Dana Operasional</label>
-              <select v-model="sourceAccountId" class="form-select" required>
+              <select
+                ref="sourceAccountRef"
+                v-model="sourceAccountId"
+                class="form-select"
+                required
+                @change="onSourceAccountChanged"
+              >
                 <option disabled value="">-- Pilih Akun Pengeluaran --</option>
                 <option v-for="acc in activeAccounts" :key="acc.id" :value="acc.id">
                   {{ acc.name }} (Saldo: {{ formatRupiah(accountBalances[acc.id] || acc.initialBalance) }})
@@ -140,11 +247,13 @@
             <div class="form-group">
               <label class="form-label">Keterangan Pengeluaran</label>
               <input
+                ref="noteRef"
                 v-model="note"
                 type="text"
                 class="form-input"
                 placeholder="Contoh: Beli kertas struk / bayar listrik"
                 required
+                @keydown.enter.prevent="focusElement(moneyInputRef)"
               />
             </div>
           </div>
@@ -153,7 +262,13 @@
           <div v-else-if="layanan === 'pindah_dana'" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Akun Asal (Keluar)</label>
-              <select v-model="sourceAccountId" class="form-select" required>
+              <select
+                ref="sourceAccountRef"
+                v-model="sourceAccountId"
+                class="form-select"
+                required
+                @change="onSourceAccountChanged"
+              >
                 <option disabled value="">-- Pilih Akun Asal --</option>
                 <option v-for="acc in activeAccounts" :key="acc.id" :value="acc.id">
                   {{ acc.name }}
@@ -162,7 +277,13 @@
             </div>
             <div class="form-group">
               <label class="form-label">Akun Tujuan (Masuk)</label>
-              <select v-model="destAccountId" class="form-select" required>
+              <select
+                ref="destAccountRef"
+                v-model="destAccountId"
+                class="form-select"
+                required
+                @change="onDestAccountChanged"
+              >
                 <option disabled value="">-- Pilih Akun Tujuan --</option>
                 <option
                   v-for="acc in activeAccounts.filter((a) => a.id !== sourceAccountId)"
@@ -179,7 +300,13 @@
           <div v-else-if="['deposit_server', 'deposit_provider'].includes(layanan)" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Sumber Dana (Rekening / Kas Keluar)</label>
-              <select v-model="sourceAccountId" class="form-select" required>
+              <select
+                ref="sourceAccountRef"
+                v-model="sourceAccountId"
+                class="form-select"
+                required
+                @change="onSourceAccountChanged"
+              >
                 <option disabled value="">-- Pilih Akun Sumber Dana --</option>
                 <option v-for="acc in activeAccounts.filter(a => ['bank', 'kas'].includes(a.type))" :key="acc.id" :value="acc.id">
                   {{ acc.name }}
@@ -188,7 +315,13 @@
             </div>
             <div class="form-group">
               <label class="form-label">Akun Saldo Catatan (Bertambah)</label>
-              <select v-model="destAccountId" class="form-select" required>
+              <select
+                ref="destAccountRef"
+                v-model="destAccountId"
+                class="form-select"
+                required
+                @change="onDestAccountChanged"
+              >
                 <option disabled value="">-- Pilih Akun Catatan --</option>
                 <option
                   v-for="acc in activeAccounts.filter((a) => layanan === 'deposit_server' ? a.type === 'server_pulsa' : a.type === 'provider_app')"
@@ -205,6 +338,7 @@
         <!-- 3. Baris Nominal Pokok + Biaya Admin + Bayar Admin (Satu Baris) -->
         <div class="form-section card-section">
           <MoneyInput
+            ref="moneyInputRef"
             v-model="nominal"
             v-model:fee="fee"
             v-model:feePaidBy="feePaidBy"
@@ -213,6 +347,8 @@
             :fee-manual-override="feeManualOverride"
             @update:model-value="onNominalChanged"
             @override-fee="onFeeOverridden"
+            @enter="onNominalEnter"
+            @admin-enter="onAdminEnter"
           />
 
           <!-- Banner Tarif / Peringatan Tarif Belum Ada -->
@@ -223,38 +359,29 @@
           />
         </div>
 
-        <!-- 4. Metode Terima & Status Pembayaran (Lunas / Hutang) -->
+        <!-- 4. Status Pembayaran (Lunas / Hutang) -->
         <div v-if="!['operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)" class="form-section card-section">
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label class="form-label">Diterima Lewat</label>
-              <select v-model="paymentAccountId" class="form-select" required>
-                <option v-for="acc in receivableAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }} ({{ acc.type }})
-                </option>
-              </select>
-            </div>
-
-            <div class="form-group flex-1">
-              <label class="form-label">Status Bayar</label>
-              <div class="status-toggle">
-                <button
-                  type="button"
-                  class="status-btn"
-                  :class="{ active: paymentStatus === 'lunas' }"
-                  @click="paymentStatus = 'lunas'"
-                >
-                  Lunas
-                </button>
-                <button
-                  type="button"
-                  class="status-btn"
-                  :class="{ active: paymentStatus === 'hutang' }"
-                  @click="paymentStatus = 'hutang'"
-                >
-                  Hutang
-                </button>
-              </div>
+          <div class="form-group">
+            <label class="form-label">Status Bayar</label>
+            <div class="status-toggle">
+              <button
+                ref="statusLunasBtnRef"
+                type="button"
+                class="status-btn"
+                :class="{ active: paymentStatus === 'lunas' }"
+                @click="onPaymentStatusChanged('lunas')"
+              >
+                Lunas
+              </button>
+              <button
+                ref="statusHutangBtnRef"
+                type="button"
+                class="status-btn"
+                :class="{ active: paymentStatus === 'hutang' }"
+                @click="onPaymentStatusChanged('hutang')"
+              >
+                Hutang
+              </button>
             </div>
           </div>
 
@@ -262,7 +389,13 @@
           <div v-if="paymentStatus === 'hutang'" class="debt-box">
             <label class="form-label text-warning">Pilih Pelanggan (Wajib)</label>
             <div class="customer-picker">
-              <select v-model="selectedCustomerId" class="form-select" required>
+              <select
+                ref="customerSelectRef"
+                v-model="selectedCustomerId"
+                class="form-select"
+                required
+                @change="onCustomerChanged"
+              >
                 <option disabled value="">-- Pilih Pelanggan Terdaftar --</option>
                 <option v-for="c in customerList" :key="c.id" :value="c.id">
                   {{ c.name }} {{ c.phone ? `(${c.phone})` : '' }}
@@ -275,10 +408,12 @@
           <div class="form-group mt-2">
             <label class="form-label">Catatan Tambahan (Opsional)</label>
             <input
+              ref="noteRef"
               v-model="note"
               type="text"
               class="form-input"
               placeholder="Catatan kecil / keterangan"
+              @keydown.enter.prevent="focusElement(submitBtnRef)"
             />
           </div>
         </div>
@@ -330,27 +465,28 @@
             </span>
           </div>
 
-          <!-- Jika layanan non-kasir yang form-section 4 disembunyikan, tampilkan catatan di sini -->
-          <div v-if="['operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)" class="form-group mt-2">
+          <!-- Jika layanan non-kasir (pindah_dana, deposit), tampilkan catatan di sini -->
+          <div v-if="['pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)" class="form-group mt-2">
             <label class="form-label">Catatan Tambahan (Opsional)</label>
             <input
+              ref="noteRef"
               v-model="note"
               type="text"
               class="form-input"
               placeholder="Catatan kecil / keterangan"
+              @keydown.enter.prevent="focusElement(submitBtnRef)"
             />
           </div>
         </div>
 
-        <!-- 5. Tombol Simpan Sticky di Bawah -->
+        <!-- 5. Tombol Simpan Sticky di Bawah (Tanpa Popup Summary Preview) -->
         <div class="sticky-footer">
-          <div class="summary-preview">
-            <span class="preview-label">Total Transaksi</span>
-            <span class="preview-amount money-display">
-              {{ formatRupiah(layanan === 'tarik_tunai' ? nominal : (feePaidBy === 'cash' ? nominal + fee : nominal)) }}
-            </span>
-          </div>
-          <button type="submit" class="btn-submit-tx" :disabled="isSubmitting || nominal <= 0">
+          <button
+            ref="submitBtnRef"
+            type="submit"
+            class="btn-submit-tx"
+            :disabled="isSubmitting || nominal <= 0"
+          >
             <span v-if="!isSubmitting">Simpan Transaksi</span>
             <span v-else>Menyimpan...</span>
           </button>
@@ -361,7 +497,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
   ArrowRightLeft,
@@ -376,6 +512,9 @@ import {
   TrendingDown,
   RefreshCw,
   AlertCircle,
+  ChevronDown,
+  Search,
+  Check,
 } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import MoneyInput from '../components/MoneyInput.vue';
@@ -406,7 +545,6 @@ const isDateChanged = computed(() => transactionDateStr.value !== todayWita);
 const layanan = ref<string>('transfer');
 const sourceAccountId = ref<string>('');
 const destAccountId = ref<string>('');
-const paymentAccountId = ref<string>('');
 const selectedProductId = ref<string>('');
 const selectedCustomerId = ref<string>('');
 const nominal = ref<number>(0);
@@ -427,22 +565,56 @@ const accountBalances = ref<Record<string, number>>({});
 const productList = ref<Product[]>([]);
 const customerList = ref<Customer[]>([]);
 
+// Dropdown Combobox State
+const isDropdownOpen = ref(false);
+const searchQuery = ref('');
+const highlightedIndex = ref(0);
+const comboboxContainerRef = ref<HTMLElement | null>(null);
+const layananTriggerRef = ref<HTMLButtonElement | null>(null);
+const searchInputRef = ref<HTMLInputElement | null>(null);
+
+// Element Refs for Auto-Focus
+const sourceAccountRef = ref<HTMLSelectElement | null>(null);
+const destAccountRef = ref<HTMLSelectElement | null>(null);
+const productSelectRef = ref<HTMLSelectElement | null>(null);
+const referenceNoRef = ref<HTMLInputElement | null>(null);
+const moneyInputRef = ref<InstanceType<typeof MoneyInput> | null>(null);
+const statusLunasBtnRef = ref<HTMLButtonElement | null>(null);
+const statusHutangBtnRef = ref<HTMLButtonElement | null>(null);
+const customerSelectRef = ref<HTMLSelectElement | null>(null);
+const noteRef = ref<HTMLInputElement | null>(null);
+const submitBtnRef = ref<HTMLButtonElement | null>(null);
+
 const primaryServices = [
-  { code: 'transfer', label: 'Transfer', icon: ArrowRightLeft },
-  { code: 'tarik_tunai', label: 'Tarik Tunai', icon: Banknote },
-  { code: 'topup_ewallet', label: 'E-Wallet', icon: Wallet },
-  { code: 'pulsa', label: 'Pulsa', icon: Smartphone },
-  { code: 'data', label: 'Paket Data', icon: Layers },
-  { code: 'token_pln', label: 'Token PLN', icon: Zap },
-  { code: 'voucher', label: 'Voucher', icon: Ticket },
-  { code: 'perdana', label: 'Perdana', icon: Package },
-  { code: 'aksesoris', label: 'Aksesoris', icon: Package },
-  { code: 'ppob', label: 'Tagihan PPOB', icon: Receipt },
-  { code: 'pindah_dana', label: 'Pindah Dana', icon: RefreshCw },
-  { code: 'deposit_server', label: 'Deposit Server', icon: Smartphone },
-  { code: 'deposit_provider', label: 'Deposit Provider', icon: Layers },
-  { code: 'operasional', label: 'Operasional', icon: TrendingDown },
+  { code: 'transfer', label: 'Transfer', icon: ArrowRightLeft, keywords: ['tf', 'kirim uang', 'bank', 'trans'] },
+  { code: 'tarik_tunai', label: 'Tarik Tunai', icon: Banknote, keywords: ['tarik tunai', 'tarik', 'tunai', 'trans', 'cash out'] },
+  { code: 'topup_ewallet', label: 'E-Wallet', icon: Wallet, keywords: ['dana', 'gopay', 'ovo', 'shopeepay', 'linkaja', 'ewallet'] },
+  { code: 'pulsa', label: 'Pulsa', icon: Smartphone, keywords: ['pul', 'reguler', 'telepon'] },
+  { code: 'data', label: 'Paket Data', icon: Layers, keywords: ['kuota', 'paket data', 'internet', 'paket'] },
+  { code: 'token_pln', label: 'Token PLN', icon: Zap, keywords: ['listrik', 'pln', 'token', 'stroom'] },
+  { code: 'voucher', label: 'Voucher', icon: Ticket, keywords: ['voucher fisik', 'kuota voucher'] },
+  { code: 'perdana', label: 'Perdana', icon: Package, keywords: ['kartu perdana', 'kartu', 'sim card'] },
+  { code: 'aksesoris', label: 'Aksesoris', icon: Package, keywords: ['kabel', 'charger', 'casing', 'headset'] },
+  { code: 'ppob', label: 'Tagihan PPOB', icon: Receipt, keywords: ['bpjs', 'pdam', 'tagihan', 'angsuran'] },
+  { code: 'pindah_dana', label: 'Pindah Dana', icon: RefreshCw, keywords: ['mutasi', 'transfer internal'] },
+  { code: 'deposit_server', label: 'Deposit Server', icon: Smartphone, keywords: ['topup server', 'isi saldo server'] },
+  { code: 'deposit_provider', label: 'Deposit Provider', icon: Layers, keywords: ['topup provider', 'isi provider'] },
+  { code: 'operasional', label: 'Operasional', icon: TrendingDown, keywords: ['biaya', 'beban', 'pengeluaran'] },
 ];
+
+const selectedServiceObj = computed(() => {
+  return primaryServices.find((s) => s.code === layanan.value) || primaryServices[0];
+});
+
+const filteredServices = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return primaryServices;
+  return primaryServices.filter((s) => {
+    if (s.label.toLowerCase().includes(q)) return true;
+    if (s.code.toLowerCase().includes(q)) return true;
+    return s.keywords.some((k) => k.toLowerCase().includes(q));
+  });
+});
 
 const availableBankAccounts = computed(() =>
   activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'ewallet' || a.type === 'kas')
@@ -450,10 +622,6 @@ const availableBankAccounts = computed(() =>
 
 const serverAccounts = computed(() =>
   activeAccounts.value.filter((a) => a.type === 'server_pulsa')
-);
-
-const receivableAccounts = computed(() =>
-  activeAccounts.value.filter((a) => a.type === 'kas' || a.type === 'bank' || a.type === 'ewallet')
 );
 
 const availablePhysicalProducts = computed(() =>
@@ -469,6 +637,8 @@ const availableDigitalProducts = computed(() =>
 );
 
 onMounted(async () => {
+  document.addEventListener('pointerdown', handleClickOutside);
+
   // Ambil jenis dari query parameter jika ada (misal dari Aksi Cepat Home)
   const qType = route.query['type'];
   if (typeof qType === 'string' && qType) {
@@ -482,11 +652,6 @@ onMounted(async () => {
   // Muat pelanggan
   customerList.value = await db.customers.toArray();
 
-  // Tentukan akun default
-  const defaultKas = activeAccounts.value.find((a) => a.type === 'kas');
-  if (defaultKas) {
-    paymentAccountId.value = defaultKas.id;
-  }
   const defaultBank = activeAccounts.value.find((a) => a.type === 'bank');
   if (defaultBank) {
     sourceAccountId.value = defaultBank.id;
@@ -505,6 +670,138 @@ onMounted(async () => {
   }
 });
 
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', handleClickOutside);
+});
+
+function toggleDropdown() {
+  if (isDropdownOpen.value) {
+    closeDropdown();
+  } else {
+    openDropdown();
+  }
+}
+
+function openDropdown() {
+  isDropdownOpen.value = true;
+  searchQuery.value = '';
+  const idx = filteredServices.value.findIndex((s) => s.code === layanan.value);
+  highlightedIndex.value = idx >= 0 ? idx : 0;
+  nextTick(() => {
+    searchInputRef.value?.focus();
+  });
+}
+
+function closeDropdown() {
+  isDropdownOpen.value = false;
+  searchQuery.value = '';
+}
+
+function moveHighlight(step: number) {
+  if (filteredServices.value.length === 0) return;
+  const len = filteredServices.value.length;
+  highlightedIndex.value = (highlightedIndex.value + step + len) % len;
+}
+
+function selectHighlighted() {
+  if (filteredServices.value.length === 0) return;
+  const target = filteredServices.value[highlightedIndex.value];
+  if (target) {
+    onSelectOption(target.code);
+  }
+}
+
+function onSelectOption(code: string) {
+  selectService(code);
+  closeDropdown();
+  focusNextFieldAfterService(code);
+}
+
+function handleClickOutside(event: MouseEvent) {
+  if (
+    comboboxContainerRef.value &&
+    !comboboxContainerRef.value.contains(event.target as Node)
+  ) {
+    closeDropdown();
+  }
+}
+
+interface FocusableElement {
+  focus?: () => void;
+  focusNominal?: () => void;
+  $el?: HTMLElement;
+}
+
+function focusElement(el: HTMLElement | FocusableElement | null | undefined) {
+  if (!el) return;
+  nextTick(() => {
+    if ('focusNominal' in el && typeof el.focusNominal === 'function') {
+      el.focusNominal();
+    } else if (typeof el.focus === 'function') {
+      el.focus();
+    } else if ('$el' in el && el.$el && typeof el.$el.focus === 'function') {
+      el.$el.focus();
+    } else if ('$el' in el && el.$el) {
+      const input = el.$el.querySelector<HTMLElement>('input, select, textarea, button');
+      if (input && typeof input.focus === 'function') {
+        input.focus();
+      }
+    }
+  });
+}
+
+function focusNextFieldAfterService(code: string) {
+  nextTick(() => {
+    if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(code)) {
+      focusElement(sourceAccountRef.value);
+    } else if (['voucher', 'perdana', 'aksesoris'].includes(code)) {
+      focusElement(productSelectRef.value);
+    } else if (['pulsa', 'data', 'token_pln'].includes(code)) {
+      if (sourceAccountId.value) {
+        focusElement(referenceNoRef.value);
+      } else {
+        focusElement(sourceAccountRef.value);
+      }
+    } else if (code === 'operasional') {
+      focusElement(sourceAccountRef.value);
+    } else if (code === 'pindah_dana') {
+      focusElement(sourceAccountRef.value);
+    } else if (['deposit_server', 'deposit_provider'].includes(code)) {
+      focusElement(sourceAccountRef.value);
+    }
+  });
+}
+
+function onSourceAccountChanged() {
+  nextTick(() => {
+    if (['transfer', 'topup_ewallet', 'ppob'].includes(layanan.value)) {
+      focusElement(referenceNoRef.value);
+    } else if (layanan.value === 'tarik_tunai') {
+      focusElement(moneyInputRef.value);
+    } else if (['pulsa', 'data', 'token_pln'].includes(layanan.value)) {
+      focusElement(referenceNoRef.value);
+    } else if (layanan.value === 'operasional') {
+      focusElement(noteRef.value);
+    } else if (layanan.value === 'pindah_dana' || ['deposit_server', 'deposit_provider'].includes(layanan.value)) {
+      focusElement(destAccountRef.value);
+    }
+  });
+}
+
+function onDestAccountChanged() {
+  nextTick(() => {
+    focusElement(moneyInputRef.value);
+  });
+}
+
+function onReferenceNoEnter() {
+  if (['pulsa', 'data', 'token_pln'].includes(layanan.value)) {
+    focusElement(productSelectRef.value);
+  } else {
+    focusElement(moneyInputRef.value);
+  }
+}
+
 function selectService(code: string) {
   layanan.value = code;
   selectedProductId.value = '';
@@ -521,6 +818,46 @@ async function onNominalChanged(val: number) {
   if (!feeManualOverride.value) {
     await recalculateFee();
   }
+}
+
+function onNominalEnter() {
+  const hasAdmin = ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(layanan.value);
+  if (hasAdmin) {
+    if (moneyInputRef.value && typeof moneyInputRef.value.focusAdmin === 'function') {
+      moneyInputRef.value.focusAdmin();
+    } else {
+      focusElement(statusLunasBtnRef.value);
+    }
+  } else {
+    if (['operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan.value)) {
+      focusElement(noteRef.value || submitBtnRef.value);
+    } else {
+      focusElement(statusLunasBtnRef.value);
+    }
+  }
+}
+
+function onAdminEnter() {
+  focusElement(statusLunasBtnRef.value);
+}
+
+function onPaymentStatusChanged(status: 'lunas' | 'hutang') {
+  paymentStatus.value = status;
+  if (status === 'hutang') {
+    nextTick(() => {
+      focusElement(customerSelectRef.value);
+    });
+  } else {
+    nextTick(() => {
+      focusElement(noteRef.value);
+    });
+  }
+}
+
+function onCustomerChanged() {
+  nextTick(() => {
+    focusElement(noteRef.value);
+  });
 }
 
 async function recalculateFee() {
@@ -550,6 +887,9 @@ function onProductSelected() {
     nominal.value = prod.hargaJual;
     fee.value = 0;
   }
+  nextTick(() => {
+    focusElement(statusLunasBtnRef.value);
+  });
 }
 
 async function handleSubmit() {
@@ -586,7 +926,7 @@ async function handleSubmit() {
       {
         layanan: layanan.value,
         productId: selectedProductId.value || undefined,
-        accountId: paymentAccountId.value || undefined,
+        // paymentAccountId otomatis diturunkan di transactionService
         sourceAccountId: sourceAccountId.value || undefined,
         destAccountId: destAccountId.value || undefined,
         nominal: nominal.value,
@@ -727,42 +1067,164 @@ async function handleSubmit() {
   color: var(--text-main);
 }
 
-.service-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+/* Service Combobox */
+.service-combobox-container {
+  position: relative;
+  width: 100%;
 }
 
-.service-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 4px;
+.service-combobox-trigger {
+  width: 100%;
+  height: 48px;
   background: var(--surface-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-btn);
-  color: var(--text-main);
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.service-btn.active {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary);
-  color: var(--color-primary-dark);
-  font-weight: 700;
+.service-combobox-trigger:focus,
+.service-combobox-trigger.open {
+  border-color: var(--border-focus);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.trigger-selected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .s-icon {
   width: 20px;
   height: 20px;
+  color: var(--color-primary);
 }
 
-.s-label {
-  font-size: 10px;
+.chevron-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary);
+  transition: transform var(--transition-fast);
+}
+
+.chevron-icon.rotated {
+  transform: rotate(180deg);
+}
+
+.service-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--surface-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  padding: 8px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+}
+
+.dropdown-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.dropdown-search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px 0 32px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border-color);
+  background: var(--surface-card-subtle);
+  color: var(--text-main);
+  font-size: 13px;
+  outline: none;
+}
+
+.dropdown-search-input:focus {
+  border-color: var(--border-focus);
+  background: var(--surface-card);
+}
+
+.service-options-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.service-option-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text-main);
+  font-size: 13px;
+  transition: background-color var(--transition-fast);
+}
+
+.service-option-item.highlighted,
+.service-option-item:hover {
+  background: var(--surface-card-subtle);
+}
+
+.service-option-item.active {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 700;
+}
+
+.s-icon-sm {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.s-option-label {
+  flex: 1;
+}
+
+.check-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-primary);
+}
+
+.no-options-item {
+  padding: 16px;
   text-align: center;
-  line-height: 1.2;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .cascading-fields {
@@ -775,15 +1237,6 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.form-row {
-  display: flex;
-  gap: 10px;
-}
-
-.flex-1 {
-  flex: 1;
 }
 
 .form-label {
@@ -871,33 +1324,15 @@ async function handleSubmit() {
   background: var(--surface-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
-  padding: 14px 16px;
+  padding: 12px 16px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 10px;
   z-index: 20;
 }
 
-.summary-preview {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.preview-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.preview-amount {
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--color-primary-dark);
-}
-
 .btn-submit-tx {
+  width: 100%;
   height: 52px;
   border: none;
   border-radius: var(--radius-btn);
