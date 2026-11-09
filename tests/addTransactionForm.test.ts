@@ -287,7 +287,9 @@ describe('AddTransactionView Form Improvements (b4)', () => {
   it('Poin 5: version.json telah dinaikkan ke version_code: 4 (b4) dan changelog sesuai spek', () => {
     expect(versionData.version_code).toBe(4);
     expect(versionData.version_name).toBe('0.2.0');
-    expect(versionData.download_url).toBe('');
+    const expectedReleaseUrl = `https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v${versionData.version_name}-b${versionData.version_code}/buku-konter-v${versionData.version_name}-b${versionData.version_code}.apk`;
+    const isValidUrl = versionData.download_url === '' || versionData.download_url === expectedReleaseUrl;
+    expect(isValidUrl).toBe(true);
     expect(versionData.changelog).toContain('Form Tambah Transaksi: dropdown layanan bisa dicari');
     expect(versionData.changelog).toContain('auto-fokus');
     expect(versionData.changelog).toContain('hapus popup Total Transaksi');

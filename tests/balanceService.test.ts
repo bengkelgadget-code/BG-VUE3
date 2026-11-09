@@ -25,9 +25,11 @@ describe('BalanceService (Perhitungan Delta Saldo Catatan)', () => {
     expect(deltas.find((d) => d.accountId === 'kas-laci')?.delta).toBe(505000);
   });
 
-  it('Transfer dengan Debit Rekening (KEPUTUSAN DIKUNCI): sumber -495.000, Kas +500.000', () => {
-    // transfer Rp500.000, fee Rp5.000, Debit Rekening
-    // hBeli = Rp495.000, hJual = Rp500.000, profit = Rp5.000
+  it('Transfer dengan Debit Rekening — computeDeltas dengan paymentAccountId eksplisit (kas): sumber -495.000, Kas +500.000', () => {
+    // Catatan: Sejak b4, alur end-to-end di transactionService secara otomatis menurunkan paymentAccountId
+    // ke rekening sumber (sehingga Bank net +5.000 dan Kas tidak berubah). Unit test computeDeltas ini
+    // memverifikasi rumus matematika murni bila paymentAccountId dioper terpisah secara eksplisit.
+    // transfer Rp500.000, fee Rp5.000, Debit Rekening -> hBeli = Rp495.000, hJual = Rp500.000
     const deltas = balanceService.computeDeltas({
       layanan: 'transfer',
       sourceAccountId: 'bank-bca',
