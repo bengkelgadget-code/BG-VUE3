@@ -38,6 +38,9 @@ jobs:
           distribution: 'zulu'
           java-version: '21'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install Dependencies
         run: npm ci
 
@@ -107,7 +110,31 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease -PversionCode=${{ steps.version_info.outputs.code }} -PversionName="${{ steps.version_info.outputs.name }}" --stacktrace
+
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          SUCCESS=0
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "=== Memulai Build Android Release APK (Percobaan $RETRY_COUNT dari $MAX_RETRIES) ==="
+            if ./gradlew assembleRelease -PversionCode=${{ steps.version_info.outputs.code }} -PversionName="${{ steps.version_info.outputs.name }}" --stacktrace; then
+              SUCCESS=1
+              break
+            else
+              echo "::warning::Percobaan $RETRY_COUNT gagal."
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "Menunggu 60 detik sebelum mencoba kembali..."
+                sleep 60
+              fi
+            fi
+          done
+
+          if [ $SUCCESS -ne 1 ]; then
+            echo "::error::Build Android Release APK gagal setelah $MAX_RETRIES percobaan."
+            exit 1
+          fi
+
           cd ..
           cp android/app/build/outputs/apk/release/app-release.apk buku-konter-v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}.apk
 
