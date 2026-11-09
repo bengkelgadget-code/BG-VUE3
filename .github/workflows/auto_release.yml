@@ -8,6 +8,7 @@ on:
       - 'version.json'
       - 'package.json'
       - 'src/**'
+      - 'tests/**'
       - 'android/**'
       - '.github/workflows/**'
 
