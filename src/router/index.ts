@@ -123,16 +123,16 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
-    path: '/reports',
-    name: 'Reports',
-    component: () => import('../views/ReportsView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
     path: '/settings',
     name: 'Settings',
     component: () => import('../views/SettingsView.vue'),
     meta: { requiresAuth: true },
+  },
+  {
+    path: '/users',
+    name: 'Users',
+    component: () => import('../views/UsersView.vue'),
+    meta: { requiresAuth: true, roles: ['owner'] },
   },
   {
     path: '/audit-logs',

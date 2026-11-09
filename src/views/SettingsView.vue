@@ -53,6 +53,17 @@
         </div>
       </div>
 
+      <!-- Section Kelola Petugas (Owner Saja) -->
+      <div v-if="authStore.isOwner" class="settings-card">
+        <h3 class="card-title">Kelola Petugas</h3>
+        <div class="menu-grid">
+          <router-link to="/users" class="menu-item">
+            <span class="item-title">Kelola Petugas</span>
+            <span class="item-desc">Tambah, ubah &amp; nonaktifkan akun Admin/Kasir</span>
+          </router-link>
+        </div>
+      </div>
+
       <!-- Section Master Data (Owner/Admin Saja) -->
       <div v-if="authStore.isAdmin" class="settings-card">
         <h3 class="card-title">Master Data Konter</h3>

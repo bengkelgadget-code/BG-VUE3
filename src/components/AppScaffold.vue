@@ -39,9 +39,9 @@
         <span class="nav-label">Shift</span>
       </router-link>
 
-      <router-link to="/reports" class="nav-item" :class="{ active: currentRouteName === 'Reports' }">
-        <BarChart3 class="nav-icon" />
-        <span class="nav-label">Laporan</span>
+      <router-link to="/settings" class="nav-item" :class="{ active: currentRouteName === 'Settings' }">
+        <Settings class="nav-icon" />
+        <span class="nav-label">Pengaturan</span>
       </router-link>
     </nav>
   </div>
@@ -50,7 +50,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { Home, ReceiptText, Plus, Clock, BarChart3 } from 'lucide-vue-next';
+import { Home, ReceiptText, Plus, Clock, Settings } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/authStore';
 
 defineProps<{

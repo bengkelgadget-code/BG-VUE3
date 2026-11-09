@@ -201,6 +201,198 @@ export class AuthServiceImpl {
   public canViewModal(role: UserRole): boolean {
     return role === 'owner' || role === 'admin';
   }
+
+  /**
+   * Menambahkan petugas baru (Admin / Kasir).
+   * Hanya boleh dilakukan oleh Owner.
+   */
+  public async createUser(name: string, role: UserRole, pin: string): Promise<User> {
+    const currentUser = await this.getCurrentUser();
+    if (!currentUser || currentUser.role !== 'owner') {
+      throw new AppError('Hanya Owner yang berhak menambah petugas.');
+    }
+
+    if (role !== 'admin' && role !== 'kasir') {
+      throw new AppError('Role petugas hanya boleh Admin atau Kasir.');
+    }
+
+    const trimmedName = name ? name.trim() : '';
+    if (!trimmedName || trimmedName.length < 2) {
+      throw new AppError('Nama petugas minimal 2 karakter.');
+    }
+
+    const trimmedPin = pin ? pin.trim() : '';
+    if (!trimmedPin || trimmedPin.length < 4 || trimmedPin.length > 6 || !/^\d+$/.test(trimmedPin)) {
+      throw new AppError('PIN harus berupa 4-6 angka.');
+    }
+
+    const pinHash = await this.hashPin(trimmedPin);
+    const now = Date.now();
+
+    const newUser: User = {
+      id: uuidv4(),
+      name: trimmedName,
+      role,
+      pinHash,
+      isActive: true,
+      createdAt: now,
+    };
+
+    await db.transaction('rw', [db.users, db.auditLogs], async () => {
+      await db.users.add(newUser);
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: currentUser.id,
+        action: 'tambah_petugas',
+        entityType: 'user',
+        entityId: newUser.id,
+        detail: JSON.stringify({ name: newUser.name, role: newUser.role }),
+        createdAt: now,
+      });
+    });
+
+    return newUser;
+  }
+
+  /**
+   * Mengubah nama atau role petugas.
+   * Hanya boleh dilakukan oleh Owner.
+   * Akun Owner tidak dapat diubah dari menu kelola petugas.
+   */
+  public async updateUser(
+    userId: string,
+    data: { name?: string; role?: UserRole }
+  ): Promise<User> {
+    const currentUser = await this.getCurrentUser();
+    if (!currentUser || currentUser.role !== 'owner') {
+      throw new AppError('Hanya Owner yang berhak mengubah data petugas.');
+    }
+
+    const target = await db.users.get(userId);
+    if (!target) {
+      throw new AppError('Pengguna tidak ditemukan.');
+    }
+
+    if (target.role === 'owner') {
+      throw new AppError('Akun Owner tidak dapat diubah dari menu kelola petugas.');
+    }
+
+    if (data.role && data.role !== 'admin' && data.role !== 'kasir') {
+      throw new AppError('Role petugas hanya boleh Admin atau Kasir.');
+    }
+
+    const updates: Partial<User> = {};
+    if (data.name !== undefined) {
+      const trimmedName = data.name.trim();
+      if (!trimmedName || trimmedName.length < 2) {
+        throw new AppError('Nama petugas minimal 2 karakter.');
+      }
+      updates.name = trimmedName;
+    }
+
+    if (data.role !== undefined) {
+      updates.role = data.role;
+    }
+
+    const now = Date.now();
+    await db.transaction('rw', [db.users, db.auditLogs], async () => {
+      await db.users.update(userId, updates);
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: currentUser.id,
+        action: 'update_petugas',
+        entityType: 'user',
+        entityId: userId,
+        detail: JSON.stringify(updates),
+        createdAt: now,
+      });
+    });
+
+    const updated = await db.users.get(userId);
+    return updated!;
+  }
+
+  /**
+   * Mengaktifkan atau menonaktifkan akun petugas.
+   * Hanya boleh dilakukan oleh Owner.
+   * Akun Owner TIDAK BISA dinonaktifkan.
+   */
+  public async setUserActive(userId: string, isActive: boolean): Promise<User> {
+    const currentUser = await this.getCurrentUser();
+    if (!currentUser || currentUser.role !== 'owner') {
+      throw new AppError('Hanya Owner yang berhak mengubah status petugas.');
+    }
+
+    const target = await db.users.get(userId);
+    if (!target) {
+      throw new AppError('Pengguna tidak ditemukan.');
+    }
+
+    if (target.role === 'owner' || target.id === currentUser.id) {
+      throw new AppError('Akun Owner tidak dapat dinonaktifkan.');
+    }
+
+    const now = Date.now();
+    await db.transaction('rw', [db.users, db.auditLogs], async () => {
+      await db.users.update(userId, { isActive });
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: currentUser.id,
+        action: isActive ? 'aktifkan_petugas' : 'nonaktifkan_petugas',
+        entityType: 'user',
+        entityId: userId,
+        detail: JSON.stringify({ isActive }),
+        createdAt: now,
+      });
+    });
+
+    const updated = await db.users.get(userId);
+    return updated!;
+  }
+
+  /**
+   * Reset PIN petugas oleh Owner (tanpa memerlukan PIN lama).
+   * Hanya boleh dilakukan oleh Owner.
+   */
+  public async resetPinByOwner(userId: string, newPin: string): Promise<void> {
+    const currentUser = await this.getCurrentUser();
+    if (!currentUser || currentUser.role !== 'owner') {
+      throw new AppError('Hanya Owner yang berhak mereset PIN petugas.');
+    }
+
+    const target = await db.users.get(userId);
+    if (!target) {
+      throw new AppError('Pengguna tidak ditemukan.');
+    }
+
+    const trimmedNew = newPin ? newPin.trim() : '';
+    if (!trimmedNew || trimmedNew.length < 4 || trimmedNew.length > 6 || !/^\d+$/.test(trimmedNew)) {
+      throw new AppError('PIN baru harus 4-6 angka.');
+    }
+
+    const newHash = await this.hashPin(trimmedNew);
+    const now = Date.now();
+
+    await db.transaction('rw', [db.users, db.auditLogs], async () => {
+      await db.users.update(userId, { pinHash: newHash });
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: currentUser.id,
+        action: 'reset_pin_petugas',
+        entityType: 'user',
+        entityId: userId,
+        detail: JSON.stringify({ targetUserId: userId }),
+        createdAt: now,
+      });
+    });
+  }
+
+  /**
+   * Mengambil seluruh data user (untuk halaman Kelola Petugas).
+   */
+  public async getAllUsers(): Promise<User[]> {
+    return await db.users.toArray();
+  }
 }
 
 export const authService = new AuthServiceImpl();

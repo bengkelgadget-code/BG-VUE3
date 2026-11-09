@@ -17,7 +17,7 @@ interface ApkInstallerPlugin {
 const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller');
 
 // Fallback jika di lingkungan web/dev tanpa platform native
-export const DEFAULT_WEB_FALLBACK_VERSION_CODE = 3;
+export const DEFAULT_WEB_FALLBACK_VERSION_CODE = 5;
 
 export class UpdateService {
   private currentVersionCode: number = DEFAULT_WEB_FALLBACK_VERSION_CODE;
