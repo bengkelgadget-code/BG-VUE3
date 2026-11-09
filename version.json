@@ -1,7 +1,7 @@
 {
   "version_code": 5,
   "version_name": "0.2.0",
-  "download_url": "",
+  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b5/buku-konter-v0.2.0-b5.apk",
   "changelog": "Ganti menu Laporan dengan Pengaturan; tambah Kelola Petugas di Pengaturan Owner",
   "force_update": false
 }
