@@ -11,3 +11,6 @@ dist-ssr/
 *.sln
 *.sw?
 .DS_Store
+
+# Bundle live-update (Capgo) — build artifact, dibuat ulang tiap rilis oleh scripts/build-ota.js
+update.zip
