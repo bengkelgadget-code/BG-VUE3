@@ -4,8 +4,9 @@ import { db } from '../src/db/database';
 import { supabaseSyncService, SYNC_TABLES } from '../src/services/supabaseSyncService';
 import { AppError } from '../src/core/errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Transaction } from '../src/db/types';
 
-describe('SupabaseSyncService (b9: Koneksi Data ke Supabase)', () => {
+describe('SupabaseSyncService (b9 & b10: Koneksi Data ke Supabase)', () => {
   beforeEach(async () => {
     localStorage.clear();
     supabaseSyncService.setCustomClient(null);
@@ -59,7 +60,7 @@ describe('SupabaseSyncService (b9: Koneksi Data ke Supabase)', () => {
     });
   });
 
-  describe('2. pushAll (Pengunggahan & Tombstone)', () => {
+  describe('2. pushAll (Pengunggahan, Batching & Tombstone)', () => {
     it('mengunggah data per tabel (14 tabel) dengan onConflict table_name,row_id dan melakukan tombstone', async () => {
       // Isi data lokal di beberapa tabel
       await db.users.add({
@@ -112,17 +113,18 @@ describe('SupabaseSyncService (b9: Koneksi Data ke Supabase)', () => {
             }),
             select: vi.fn((_cols: string) => ({
               eq: vi.fn((field1: string, val1: unknown) => ({
-                eq: vi.fn(async (_field2: string, _val2: unknown) => {
-                  // Simulasi data cloud yang ada untuk tombstone check
-                  if (field1 === 'table_name' && val1 === 'brands') {
-                    // Di cloud ada brand-1 dan brand-deleted
-                    return {
-                      data: [{ row_id: 'brand-1' }, { row_id: 'brand-deleted' }],
-                      error: null,
-                    };
-                  }
-                  return { data: [], error: null };
-                }),
+                eq: vi.fn((_field2: string, _val2: unknown) => ({
+                  range: vi.fn(async (from: number) => {
+                    // Simulasi data cloud yang ada untuk tombstone check (halaman 0)
+                    if (field1 === 'table_name' && val1 === 'brands' && from === 0) {
+                      return {
+                        data: [{ row_id: 'brand-1' }, { row_id: 'brand-deleted' }],
+                        error: null,
+                      };
+                    }
+                    return { data: [], error: null };
+                  }),
+                })),
               })),
             })),
             update: vi.fn((updateData: { deleted: boolean; updated_at: string }) => ({
@@ -164,10 +166,160 @@ describe('SupabaseSyncService (b9: Koneksi Data ke Supabase)', () => {
       // Verifikasi timestamp tersimpan di localStorage
       expect(localStorage.getItem('buku_konter_sync_last_at')).toBe(String(result.at));
     });
+
+    it('(a) Push dengan data >100 baris: buktikan batching 100 berjalan (250 baris -> 3 batch upsert)', async () => {
+      // Masukkan 250 transaksi ke db.transactions
+      const txList: Transaction[] = [];
+      for (let i = 1; i <= 250; i++) {
+        txList.push({
+          id: `tx-${i}`,
+          layanan: 'transfer',
+          shiftId: 's-1',
+          userId: 'u-1',
+          accountId: 'acc-1',
+          nominal: 10000,
+          fee: 2000,
+          feePaidBy: 'cash',
+          feeManualOverride: false,
+          paymentMethod: 'tunai',
+          paymentStatus: 'lunas',
+          status: 'ok',
+          date: Date.now(),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+      await db.transactions.bulkAdd(txList);
+
+      const batchSizes: number[] = [];
+
+      const mockClient = {
+        from: vi.fn(() => ({
+          upsert: vi.fn(async (records: Array<Record<string, unknown>>) => {
+            batchSizes.push(records.length);
+            return { error: null };
+          }),
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                range: vi.fn(async () => ({ data: [], error: null })),
+              })),
+            })),
+          })),
+        })),
+      } as unknown as SupabaseClient;
+
+      supabaseSyncService.setCustomClient(mockClient);
+
+      const res = await supabaseSyncService.pushAll();
+      expect(res.pushed).toBe(250);
+
+      // Pastikan batching 100 berjalan: 100, 100, 50
+      expect(batchSizes).toEqual([100, 100, 50]);
+    });
+
+    it('(b) Assert ke-14 tabel (termasuk brands) ikut diproses saat pushAll', async () => {
+      // Seed 1 baris di setiap tabel dari 14 tabel
+      const now = Date.now();
+      await db.users.add({ id: 'u1', name: 'U', role: 'owner', pinHash: 'h', isActive: true, createdAt: now });
+      await db.accounts.add({ id: 'acc1', name: 'A', type: 'kas', initialBalance: 0, icon: 'Wallet', color: '#000', isActive: true, createdAt: now, updatedAt: now });
+      await db.accountLedger.add({ id: 'led1', accountId: 'acc1', kind: 'pokok', delta: 0, createdAt: now });
+      await db.products.add({ id: 'p1', name: 'P', category: 'pulsa', modal: 1000, hargaJual: 2000, stock: null, stockMin: 0, isActive: true, createdAt: now, updatedAt: now });
+      await db.adminFeeRules.add({ id: 'fr1', layanan: 'transfer', groupId: 'g1', minNom: 0, maxNom: 10000, feeType: 'tetap', valMargin: 1000, persentaseVal: null, isActive: true, createdAt: now, updatedAt: now });
+      await db.transactions.add({ id: 'tx1', layanan: 'transfer', shiftId: 's1', userId: 'u1', accountId: 'acc1', nominal: 10000, fee: 1000, feePaidBy: 'cash', feeManualOverride: false, paymentMethod: 'tunai', paymentStatus: 'lunas', status: 'ok', date: now, createdAt: now, updatedAt: now });
+      await db.transactionItems.add({ id: 'ti1', transactionId: 'tx1', productId: 'p1', productNameSnapshot: 'Item', modalSnapshot: 1000, hargaJualSnapshot: 2000, qty: 1, subtotal: 2000 });
+      await db.shifts.add({ id: 's1', userId: 'u1', status: 'open', saldoAwalSistem: {}, kasAwalFisik: 10000, openedAt: now });
+      await db.shiftHandovers.add({ id: 'sh1', shiftId: 's1', fromUserId: 'u1', toUserId: 'u1', hitungFisikDiterima: {}, status: 'done', createdAt: now });
+      await db.stockMovements.add({ id: 'sm1', productId: 'p1', qtyChange: 1, reason: 'opname', actorUserId: 'u1', createdAt: now });
+      await db.customers.add({ id: 'c1', name: 'Cust', balanceHutang: 0, createdAt: now });
+      await db.auditLogs.add({ id: 'al1', actorUserId: 'u1', action: 'login', entityType: 'user', entityId: 'u1', detail: '{}', createdAt: now });
+      await db.appSettings.put({ id: 1, theme: 'light', shiftTolerance: 5000, biometricEnabled: false });
+      await db.brands.add({ id: 'b1', name: 'BrandX', createdAt: now });
+
+      const tablesUpserted = new Set<string>();
+
+      const mockClient = {
+        from: vi.fn(() => ({
+          upsert: vi.fn(async (records: Array<Record<string, unknown>>) => {
+            records.forEach((r) => tablesUpserted.add(r.table_name as string));
+            return { error: null };
+          }),
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                range: vi.fn(async () => ({ data: [], error: null })),
+              })),
+            })),
+          })),
+        })),
+      } as unknown as SupabaseClient;
+
+      supabaseSyncService.setCustomClient(mockClient);
+
+      const res = await supabaseSyncService.pushAll();
+      expect(res.pushed).toBe(14);
+
+      // Verifikasi ke-14 tabel semuanya ikut di-push
+      for (const table of SYNC_TABLES) {
+        expect(tablesUpserted.has(table)).toBe(true);
+      }
+      expect(tablesUpserted.has('brands')).toBe(true);
+    });
+
+    it('Tombstone dengan paging .range(): membaca semua halaman cloud >1000 baris', async () => {
+      // Di lokal hanya ada 1 brand
+      await db.brands.add({ id: 'brand-keep', name: 'Brand Keep', createdAt: Date.now() });
+
+      const rangeCalls: Array<{ from: number; to: number }> = [];
+
+      // Cloud halaman 0 punya 1000 baris (brand-1 s/d brand-1000), halaman 1 punya 50 baris (brand-1001 s/d brand-1050)
+      const page0 = Array.from({ length: 1000 }, (_, i) => ({ row_id: `brand-${i + 1}` }));
+      const page1 = Array.from({ length: 50 }, (_, i) => ({ row_id: `brand-${i + 1001}` }));
+
+      const tombstonedIds: string[] = [];
+
+      const mockClient = {
+        from: vi.fn(() => ({
+          upsert: vi.fn(async () => ({ error: null })),
+          select: vi.fn(() => ({
+            eq: vi.fn((field: string, val: unknown) => ({
+              eq: vi.fn(() => ({
+                range: vi.fn(async (from: number, to: number) => {
+                  rangeCalls.push({ from, to });
+                  if (field === 'table_name' && val === 'brands') {
+                    if (from === 0) return { data: page0, error: null };
+                    if (from === 1000) return { data: page1, error: null };
+                  }
+                  return { data: [], error: null };
+                }),
+              })),
+            })),
+          })),
+          update: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              in: vi.fn(async (_field: string, ids: string[]) => {
+                tombstonedIds.push(...ids);
+                return { error: null };
+              }),
+            })),
+          })),
+        })),
+      } as unknown as SupabaseClient;
+
+      supabaseSyncService.setCustomClient(mockClient);
+
+      const res = await supabaseSyncService.pushAll();
+      expect(res.tombstoned).toBe(1050);
+
+      // Pastikan range dipanggil 2 kali untuk tabel brands (0..999 dan 1000..1999)
+      const brandRangeCalls = rangeCalls.filter((r) => r.from === 0 || r.from === 1000);
+      expect(brandRangeCalls.length).toBeGreaterThanOrEqual(2);
+      expect(tombstonedIds).toHaveLength(1050);
+    });
   });
 
   describe('3. pullAll (Penarikan Data & Penimpaan Atomik Dexie)', () => {
-    it('mengganti isi tabel lokal secara atomik dan mengabaikan tabel yang tidak dikenal', async () => {
+    it('mengganti isi tabel lokal secara atomik dan mengabaikan tabel yang tidak dikenal (pulled hanya menghitung tabel valid)', async () => {
       // Isi data awal yang akan tertimpa
       await db.users.add({
         id: 'user-old',
@@ -235,7 +387,8 @@ describe('SupabaseSyncService (b9: Koneksi Data ke Supabase)', () => {
       supabaseSyncService.setCustomClient(mockClient);
 
       const result = await supabaseSyncService.pullAll();
-      expect(result.pulled).toBe(4);
+      // Temuan 4: pulled HANYA menghitung data tabel yang valid (3 data), bukan 4
+      expect(result.pulled).toBe(3);
 
       // Verifikasi users di lokal terbarui (old user terhapus, cloud owner ada)
       const users = await db.users.toArray();

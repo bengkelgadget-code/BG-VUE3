@@ -9,8 +9,9 @@ import { useSettingsStore } from '../src/stores/settingsStore';
 import { supabaseSyncService } from '../src/services/supabaseSyncService';
 import SettingsView from '../src/views/SettingsView.vue';
 import CloudSyncDialog from '../src/components/CloudSyncDialog.vue';
+import App from '../src/App.vue';
 
-describe('b9: SettingsView Supabase Sync Card & CloudSyncDialog', () => {
+describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook', () => {
   beforeEach(async () => {
     setActivePinia(createPinia());
     localStorage.clear();
@@ -87,6 +88,34 @@ describe('b9: SettingsView Supabase Sync Card & CloudSyncDialog', () => {
 
       expect(localStorage.getItem('supabase_catalog_url')).toBe('https://myproject.supabase.co');
       expect(localStorage.getItem('supabase_catalog_key')).toBe('my-secret-anon-key');
+    });
+
+    it('(c) field kredensial TERSEMBUNYI bila env sudah terisi', async () => {
+      const envRecord = import.meta.env as unknown as Record<string, string | undefined>;
+      envRecord.VITE_SUPABASE_URL = 'https://env.supabase.co';
+      envRecord.VITE_SUPABASE_ANON_KEY = 'env-anon-key';
+
+      const authStore = useAuthStore();
+      authStore.currentUser = {
+        id: 'admin-1',
+        name: 'Admin',
+        role: 'admin',
+        pinHash: 'h',
+        isActive: true,
+        createdAt: Date.now(),
+      };
+
+      const wrapper = mount(SettingsView, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+
+      expect(wrapper.find('[data-testid="sync-supabase-url"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="sync-supabase-key"]').exists()).toBe(false);
+      expect(wrapper.text()).toContain('Kredensial dari konfigurasi aplikasi.');
+
+      delete envRecord.VITE_SUPABASE_URL;
+      delete envRecord.VITE_SUPABASE_ANON_KEY;
     });
 
     it('tombol "Sinkronkan Sekarang" memanggil pushAll()', async () => {
@@ -221,6 +250,62 @@ describe('b9: SettingsView Supabase Sync Card & CloudSyncDialog', () => {
 
       expect(pullSpy).not.toHaveBeenCalled();
       expect(wrapper.emitted('dismiss')).toBeTruthy();
+    });
+  });
+
+  describe('3. Hook App.vue & Toast Sukses (b10)', () => {
+    it('(d1) dialog muncul saat install baru (lokal kosong + cloud ada data), dan toast sukses muncul setelah pulled', async () => {
+      vi.spyOn(supabaseSyncService, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(supabaseSyncService, 'isLocalEmpty').mockResolvedValue(true);
+      vi.spyOn(supabaseSyncService, 'hasCloudData').mockResolvedValue(true);
+      const pushSpy = vi.spyOn(supabaseSyncService, 'pushAll');
+
+      const wrapper = mount(App, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      // Dialog harus muncul
+      expect(wrapper.findComponent(CloudSyncDialog).exists()).toBe(true);
+      // pushAll tidak dipanggil saat lokal kosong
+      expect(pushSpy).not.toHaveBeenCalled();
+
+      // Trigger emit pulled dari dialog
+      const dialog = wrapper.findComponent(CloudSyncDialog);
+      dialog.vm.$emit('pulled', 12);
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      // Toast sukses muncul
+      const toast = wrapper.find('[data-testid="sync-toast-success"]');
+      expect(toast.exists()).toBe(true);
+      expect(toast.text()).toContain('Data berhasil ditarik dari cloud');
+      expect(toast.text()).toContain('12 data dipulihkan');
+    });
+
+    it('(d2) pushAll silent jalan saat data lokal sudah ada, dialog TIDAK muncul', async () => {
+      vi.spyOn(supabaseSyncService, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(supabaseSyncService, 'isLocalEmpty').mockResolvedValue(false);
+      const pushSpy = vi.spyOn(supabaseSyncService, 'pushAll').mockResolvedValue({
+        pushed: 5,
+        tombstoned: 0,
+        at: Date.now(),
+      });
+
+      const wrapper = mount(App, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      // Dialog TIDAK muncul
+      expect(wrapper.findComponent(CloudSyncDialog).exists()).toBe(false);
+      // pushAll dipanggil secara silent
+      expect(pushSpy).toHaveBeenCalled();
     });
   });
 });

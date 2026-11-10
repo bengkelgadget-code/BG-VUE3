@@ -1,5 +1,15 @@
 <template>
   <router-view />
+  <!-- Toast Pesan Sukses Global (b10) -->
+  <transition name="fade">
+    <div
+      v-if="syncSuccessMessage"
+      class="app-toast-success feedback-banner success"
+      data-testid="sync-toast-success"
+    >
+      {{ syncSuccessMessage }}
+    </div>
+  </transition>
   <UpdateDialog
     v-if="availableUpdate"
     :update="availableUpdate"
@@ -26,6 +36,7 @@ const authStore = useAuthStore();
 
 const availableUpdate = ref<Exclude<LiveUpdateCheck, { kind: 'none' }> | null>(null);
 const showCloudSyncDialog = ref(false);
+const syncSuccessMessage = ref('');
 
 function handleDismissUpdate() {
   if (availableUpdate.value?.kind === 'apk' && availableUpdate.value.forceUpdate) {
@@ -34,9 +45,15 @@ function handleDismissUpdate() {
   availableUpdate.value = null;
 }
 
-async function handleDataPulled() {
+async function handleDataPulled(count?: number) {
   await authStore.checkInit();
   await settingsStore.loadSettings();
+  syncSuccessMessage.value = count !== undefined && count > 0
+    ? `Data berhasil ditarik dari cloud (${count} data dipulihkan).`
+    : 'Data berhasil ditarik dari cloud.';
+  setTimeout(() => {
+    syncSuccessMessage.value = '';
+  }, 4000);
 }
 
 onMounted(async () => {
@@ -82,4 +99,27 @@ onMounted(async () => {
 <style>
 /* Global CSS variables & Plus Jakarta Sans are imported in theme.css */
 @import './core/theme.css';
+
+.app-toast-success {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  min-width: 280px;
+  max-width: 90%;
+  text-align: center;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -10px);
+}
 </style>

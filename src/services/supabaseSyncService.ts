@@ -119,14 +119,27 @@ export class SupabaseSyncService {
         }
 
         // 2. Tombstone: tandai deleted = true untuk baris di cloud yang sudah dihapus di lokal
-        const { data: cloudRows, error: cloudErr } = await client
-          .from('bk_sync')
-          .select('row_id')
-          .eq('table_name', table)
-          .eq('deleted', false);
+        // Paging .range() 1000 baris agar tidak terpotong oleh batasan query Supabase (b10)
+        let cloudRows: Array<{ row_id: string }> = [];
+        let fromTomb = 0;
+        const TOMB_PAGE_SIZE = 1000;
 
-        if (cloudErr) {
-          throw new AppError('Gagal sinkronisasi: ' + cloudErr.message);
+        while (true) {
+          const { data, error: cloudErr } = await client
+            .from('bk_sync')
+            .select('row_id')
+            .eq('table_name', table)
+            .eq('deleted', false)
+            .range(fromTomb, fromTomb + TOMB_PAGE_SIZE - 1);
+
+          if (cloudErr) {
+            throw new AppError('Gagal sinkronisasi: ' + cloudErr.message);
+          }
+
+          if (!data || data.length === 0) break;
+          cloudRows = cloudRows.concat(data as Array<{ row_id: string }>);
+          if (data.length < TOMB_PAGE_SIZE) break;
+          fromTomb += TOMB_PAGE_SIZE;
         }
 
         const localIdSet = new Set(rows.map((r: unknown) => String((r as { id: string | number }).id)));
@@ -203,6 +216,7 @@ export class SupabaseSyncService {
 
       // Masukkan ke Dexie dalam SATU transaksi atomik
       const tableList = SYNC_TABLES as unknown as string[];
+      let actualPulled = 0;
       await db.transaction('rw', tableList, async () => {
         for (const table of SYNC_TABLES) {
           const targetTable = (db as unknown as Record<string, { clear: () => Promise<void>; bulkAdd: (items: unknown[]) => Promise<unknown> }>)[table];
@@ -210,6 +224,7 @@ export class SupabaseSyncService {
           const items = groupedByTable[table] || [];
           if (items.length > 0) {
             await targetTable.bulkAdd(items);
+            actualPulled += items.length;
           }
         }
       });
@@ -219,7 +234,7 @@ export class SupabaseSyncService {
         localStorage.setItem('buku_konter_sync_last_at', String(at));
       }
 
-      return { pulled: allRecords.length, at };
+      return { pulled: actualPulled, at };
     } catch (err: unknown) {
       if (err instanceof AppError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
