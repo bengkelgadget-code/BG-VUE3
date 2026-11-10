@@ -122,6 +122,84 @@
         </div>
       </div>
 
+      <!-- Section Sinkronisasi Supabase (Owner/Admin Saja) (b9) -->
+      <div v-if="authStore.isAdmin" class="settings-card">
+        <h3 class="card-title">Sinkronisasi Supabase</h3>
+        <p class="section-desc">Data tersimpan di database Supabase supaya aman walau aplikasi di-install ulang.</p>
+
+        <div class="sync-status-box" data-testid="sync-status">
+          {{ syncStatusText }}
+        </div>
+
+        <div v-if="!isEnvConfigured" class="sync-credentials-form">
+          <input
+            v-model="supabaseUrlInput"
+            type="text"
+            placeholder="URL Supabase (https://xyz.supabase.co)"
+            class="sync-input"
+            data-testid="sync-supabase-url"
+          />
+          <input
+            v-model="supabaseKeyInput"
+            type="password"
+            placeholder="Anon Key Supabase"
+            class="sync-input"
+            data-testid="sync-supabase-key"
+          />
+          <button
+            type="button"
+            class="btn-primary-sm"
+            data-testid="sync-save-credentials"
+            @click="saveSupabaseCredentials"
+          >
+            Simpan Kredensial
+          </button>
+        </div>
+        <p v-else class="section-desc" style="margin-bottom: 12px; font-style: italic;">
+          Kredensial dari konfigurasi aplikasi.
+        </p>
+
+        <div class="action-buttons-list">
+          <button
+            type="button"
+            class="btn-action-outline"
+            data-testid="sync-now"
+            :disabled="isSyncing"
+            @click="handleSyncNow"
+          >
+            {{ isSyncing ? '⏳ Menyinkronkan...' : '☁️ Sinkronkan Sekarang' }}
+          </button>
+          <button
+            type="button"
+            class="btn-action-danger"
+            data-testid="sync-pull"
+            :disabled="isSyncing"
+            @click="handleSyncPull"
+          >
+            📥 Tarik Data dari Cloud
+          </button>
+          <button
+            type="button"
+            class="btn-action-outline"
+            data-testid="sync-test-connection"
+            :disabled="isSyncing"
+            @click="handleTestConnection"
+          >
+            🔌 Test Koneksi
+          </button>
+        </div>
+
+        <label class="sync-auto-toggle-row">
+          <input
+            type="checkbox"
+            :checked="settingsStore.cloudAutoSync !== false"
+            data-testid="sync-auto-toggle"
+            @change="handleToggleAutoSync"
+          />
+          <span>Sinkronisasi otomatis</span>
+        </label>
+      </div>
+
       <!-- Section Tampilan Tema -->
       <div class="settings-card">
         <h3 class="card-title">Tema Tampilan</h3>
@@ -193,7 +271,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { RefreshCw } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
@@ -204,6 +282,8 @@ import { backupService } from '../services/backupService';
 import { authService } from '../services/authService';
 import { liveUpdateService, type LiveUpdateCheck } from '../services/liveUpdateService';
 import { APP_VERSION } from '../core/constants';
+import { supabaseSyncService } from '../services/supabaseSyncService';
+import { formatTanggalWita } from '../utils/format';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -346,6 +426,103 @@ async function handleFileRestore(e: Event) {
     }
   };
   reader.readAsText(file);
+}
+// --- Sinkronisasi Supabase (b9) ---
+const isSyncing = ref(false);
+const lastSyncTime = ref<number | null>(null);
+
+const isEnvConfigured = computed(() => {
+  return Boolean(
+    typeof import.meta !== 'undefined' &&
+    import.meta.env?.VITE_SUPABASE_URL &&
+    import.meta.env?.VITE_SUPABASE_ANON_KEY
+  );
+});
+
+const supabaseUrlInput = ref(
+  typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_url') || '' : ''
+);
+const supabaseKeyInput = ref(
+  typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_key') || '' : ''
+);
+
+const syncStatusText = computed(() => {
+  if (!supabaseSyncService.isConfigured()) {
+    return 'Belum terhubung ke Supabase.';
+  }
+  if (!lastSyncTime.value) {
+    return 'Terhubung. Sinkron terakhir: belum pernah';
+  }
+  return `Terhubung. Sinkron terakhir: ${formatTanggalWita(lastSyncTime.value)}`;
+});
+
+onMounted(async () => {
+  await settingsStore.loadSettings();
+  if (typeof localStorage !== 'undefined') {
+    const val = localStorage.getItem('buku_konter_sync_last_at');
+    if (val) lastSyncTime.value = Number(val);
+  }
+});
+
+function saveSupabaseCredentials() {
+  const url = supabaseUrlInput.value.trim();
+  const key = supabaseKeyInput.value.trim();
+  if (!url || !key) {
+    showError('URL dan Kunci Anon Supabase wajib diisi.');
+    return;
+  }
+  localStorage.setItem('supabase_catalog_url', url);
+  localStorage.setItem('supabase_catalog_key', key);
+  supabaseSyncService.setCustomClient(null);
+  showSuccess('Kredensial Supabase berhasil disimpan.');
+}
+
+async function handleSyncNow() {
+  isSyncing.value = true;
+  try {
+    const res = await supabaseSyncService.pushAll();
+    lastSyncTime.value = res.at;
+    showSuccess(`Sinkronisasi berhasil! ${res.pushed} data diunggah.`);
+  } catch (err: unknown) {
+    showError(err instanceof Error ? err.message : 'Gagal sinkronisasi data.');
+  } finally {
+    isSyncing.value = false;
+  }
+}
+
+async function handleSyncPull() {
+  const ok = window.confirm(
+    'PERINGATAN: Menarik data dari cloud akan MENIMPA seluruh data di HP ini dengan data dari Supabase. Lanjutkan?'
+  );
+  if (!ok) return;
+
+  isSyncing.value = true;
+  try {
+    const res = await supabaseSyncService.pullAll();
+    lastSyncTime.value = res.at;
+    showSuccess(`Data cloud berhasil ditarik! ${res.pulled} data dipulihkan.`);
+  } catch (err: unknown) {
+    showError(err instanceof Error ? err.message : 'Gagal menarik data dari cloud.');
+  } finally {
+    isSyncing.value = false;
+  }
+}
+
+async function handleTestConnection() {
+  isSyncing.value = true;
+  try {
+    await supabaseSyncService.testConnection();
+    showSuccess('Koneksi OK');
+  } catch (err: unknown) {
+    showError(err instanceof Error ? err.message : 'Koneksi gagal.');
+  } finally {
+    isSyncing.value = false;
+  }
+}
+
+async function handleToggleAutoSync(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked;
+  await settingsStore.setCloudAutoSync(checked);
 }
 </script>
 
@@ -639,5 +816,47 @@ async function handleFileRestore(e: Event) {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+.sync-status-box {
+  background: var(--surface-card-subtle);
+  border: 1px solid var(--border-color);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  color: var(--text-main);
+  line-height: 1.4;
+}
+
+.sync-credentials-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sync-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.sync-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.sync-auto-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-main);
+  cursor: pointer;
+  user-select: none;
 }
 </style>

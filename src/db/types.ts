@@ -201,4 +201,5 @@ export interface AppSettings {
   biometricEnabled: boolean;
   defaultCashAccountId?: string;
   hidePlayProtectNotice?: boolean;
+  cloudAutoSync?: boolean;
 }

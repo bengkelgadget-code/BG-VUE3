@@ -8,6 +8,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const shiftTolerance = ref<number>(DEFAULT_SHIFT_TOLERANCE);
   const biometricEnabled = ref<boolean>(false);
   const hidePlayProtectNotice = ref<boolean>(false);
+  const cloudAutoSync = ref<boolean>(true);
 
   function applyTheme(selected: 'light' | 'dark' | 'system') {
     theme.value = selected;
@@ -33,6 +34,7 @@ export const useSettingsStore = defineStore('settings', () => {
     shiftTolerance.value = settings.shiftTolerance;
     biometricEnabled.value = settings.biometricEnabled;
     hidePlayProtectNotice.value = Boolean(settings.hidePlayProtectNotice);
+    cloudAutoSync.value = settings.cloudAutoSync !== false;
     applyTheme(settings.theme);
   }
 
@@ -46,13 +48,20 @@ export const useSettingsStore = defineStore('settings', () => {
     await db.appSettings.update(1, { hidePlayProtectNotice: val });
   }
 
+  async function setCloudAutoSync(val: boolean) {
+    cloudAutoSync.value = val;
+    await db.appSettings.update(1, { cloudAutoSync: val });
+  }
+
   return {
     theme,
     shiftTolerance,
     biometricEnabled,
     hidePlayProtectNotice,
+    cloudAutoSync,
     loadSettings,
     updateTheme,
     setHidePlayProtectNotice,
+    setCloudAutoSync,
   };
 });

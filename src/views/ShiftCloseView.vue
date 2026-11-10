@@ -86,12 +86,15 @@ import AppScaffold from '../components/AppScaffold.vue';
 import { shiftService } from '../services/shiftService';
 import { accountService } from '../services/accountService';
 import { useAuthStore } from '../stores/authStore';
+import { useSettingsStore } from '../stores/settingsStore';
+import { supabaseSyncService } from '../services/supabaseSyncService';
 import { formatRupiah, parseRupiah } from '../utils/format';
 import type { Shift, Account } from '../db/types';
 import { AppError } from '../core/errors';
 
 const router = useRouter();
 const authStore = useAuthStore();
+const settingsStore = useSettingsStore();
 
 const activeShift = ref<Shift | null>(null);
 const accountList = ref<Account[]>([]);
@@ -160,6 +163,9 @@ async function handleSubmit() {
       penjelasanSelisih: penjelasanSelisih.value,
       actorUserId: authStore.currentUser.id,
     });
+    if (settingsStore.cloudAutoSync !== false && supabaseSyncService.isConfigured()) {
+      supabaseSyncService.pushAll().catch(() => {});
+    }
     router.replace('/shifts');
   } catch (err: unknown) {
     if (err instanceof AppError) {
