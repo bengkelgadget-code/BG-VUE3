@@ -1,8 +1,8 @@
 {
   "version_code": 10,
   "version_name": "0.2.0",
-  "download_url": "",
-  "bundle_version": "",
+  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b10/buku-konter-v0.2.0-b10.apk",
+  "bundle_version": "1794317340663",
   "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b10/update.zip",
   "min_apk_version_code": 8,
   "changelog": "Perbaikan sinkronisasi Supabase: paging tombstone, pesan sukses pull, cakupan tes",
