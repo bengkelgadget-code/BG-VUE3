@@ -154,7 +154,7 @@
       <div class="settings-card info-card">
         <h3 class="card-title">Pembaruan Aplikasi (OTA)</h3>
         <p class="app-statement">
-          Aplikasi mendukung pembaruan Over-The-Air (OTA) APK langsung dari GitHub Releases tanpa perlu instalasi ulang.
+          Aplikasi mendukung pembaruan live (OTA) otomatis: perbaikan tampilan &amp; fitur kecil diunduh dan diterapkan sendiri tanpa instal ulang APK. Bila ada perubahan besar yang butuh APK baru, aplikasi akan memberi tahu dan mengarahkan ke halaman unduhan.
         </p>
         <div class="version-row">
           <div class="app-version-badge">Versi {{ APP_VERSION }} (Fase 2 & 3)</div>
@@ -202,7 +202,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { backupService } from '../services/backupService';
 import { authService } from '../services/authService';
-import { updateService, type VersionInfo } from '../services/updateService';
+import { liveUpdateService, type LiveUpdateCheck } from '../services/liveUpdateService';
 import { APP_VERSION } from '../core/constants';
 
 const router = useRouter();
@@ -210,14 +210,14 @@ const authStore = useAuthStore();
 const settingsStore = useSettingsStore();
 
 const isCheckingUpdate = ref(false);
-const availableUpdate = ref<VersionInfo | null>(null);
+const availableUpdate = ref<Exclude<LiveUpdateCheck, { kind: 'none' }> | null>(null);
 
 async function handleCheckUpdate() {
   isCheckingUpdate.value = true;
   errorMessage.value = '';
   try {
-    const update = await updateService.checkForUpdate();
-    if (update) {
+    const update = await liveUpdateService.checkForUpdate();
+    if (update.kind !== 'none') {
       availableUpdate.value = update;
     } else {
       showSuccess(`Aplikasi sudah versi terbaru (v${APP_VERSION}).`);
