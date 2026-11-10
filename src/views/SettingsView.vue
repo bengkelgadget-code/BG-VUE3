@@ -280,7 +280,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { backupService } from '../services/backupService';
 import { authService } from '../services/authService';
-import { liveUpdateService, type LiveUpdateCheck } from '../services/liveUpdateService';
+import { liveUpdateService, type ApkUpdate } from '../services/liveUpdateService';
 import { APP_VERSION } from '../core/constants';
 import { supabaseSyncService } from '../services/supabaseSyncService';
 import { formatTanggalWita } from '../utils/format';
@@ -290,25 +290,29 @@ const authStore = useAuthStore();
 const settingsStore = useSettingsStore();
 
 const isCheckingUpdate = ref(false);
-const availableUpdate = ref<Exclude<LiveUpdateCheck, { kind: 'none' }> | null>(null);
+const availableUpdate = ref<ApkUpdate | null>(null);
 
 async function handleCheckUpdate() {
   isCheckingUpdate.value = true;
   errorMessage.value = '';
+  let isChecking = true;
   try {
     const update = await liveUpdateService.checkForUpdate();
-    if (update.kind !== 'none') {
-      if (update.kind === 'bundle') {
-        showSuccess('Mengunduh & menerapkan pembaruan...');
-        await liveUpdateService.applyBundleUpdate(update);
-      } else {
-        availableUpdate.value = update;
-      }
+    isChecking = false;
+    if (update.kind === 'bundle') {
+      showSuccess('Mengunduh & menerapkan pembaruan...');
+      await liveUpdateService.applyBundleUpdate(update);
+    } else if (update.kind === 'apk') {
+      availableUpdate.value = update;
     } else {
       showSuccess(`Aplikasi sudah versi terbaru (v${APP_VERSION}).`);
     }
   } catch {
-    errorMessage.value = 'Gagal memeriksa pembaruan. Pastikan perangkat terhubung ke internet.';
+    if (isChecking) {
+      showError('Gagal memeriksa pembaruan. Pastikan perangkat terhubung ke internet.');
+    } else {
+      showError('Gagal mengunduh pembaruan. Coba lagi.');
+    }
   } finally {
     isCheckingUpdate.value = false;
   }

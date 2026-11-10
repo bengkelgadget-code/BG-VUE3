@@ -238,4 +238,53 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
 
     expect(steps).toEqual(['downloading', 'loading']);
   });
+
+  it('(a) Guard isUpdating: dua pemanggilan applyBundleUpdate bersamaan → pemanggilan kedua ditolak dan download hanya dipanggil 1x', async () => {
+    const { service } = makeService(makeVersionJson());
+    const update: BundleUpdate = {
+      kind: 'bundle',
+      bundleVersion: '1770000000000',
+      bundleUrl: 'https://example.com/update.zip',
+      versionName: '0.2.0',
+      versionCode: 8,
+      changelog: 'Update Capgo b8',
+    };
+
+    let resolveDownload: (val: unknown) => void = () => {};
+    mockedUpdater.download.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDownload = resolve;
+      }) as never
+    );
+
+    const call1 = service.applyBundleUpdate(update);
+
+    await expect(service.applyBundleUpdate(update)).rejects.toThrow('Proses pembaruan sedang berjalan.');
+    expect(mockedUpdater.download).toHaveBeenCalledTimes(1);
+
+    resolveDownload({ id: 'bundle-1', version: '1770000000000' });
+    await call1;
+    expect(mockedUpdater.set).toHaveBeenCalledTimes(1);
+  });
+
+  it('(a-2) Guard isUpdating ter-reset setelah gagal sehingga pemanggilan berikutnya bisa jalan', async () => {
+    const { service } = makeService(makeVersionJson());
+    const update: BundleUpdate = {
+      kind: 'bundle',
+      bundleVersion: '1770000000000',
+      bundleUrl: 'https://example.com/update.zip',
+      versionName: '0.2.0',
+      versionCode: 8,
+      changelog: 'Update Capgo b8',
+    };
+
+    mockedUpdater.download.mockRejectedValueOnce(new Error('Network error'));
+    await expect(service.applyBundleUpdate(update)).rejects.toThrow('Network error');
+    expect(service.getIsUpdating()).toBe(false);
+
+    mockedUpdater.download.mockResolvedValueOnce({ id: 'bundle-2', version: '1770000000000' } as never);
+    await service.applyBundleUpdate(update);
+    expect(mockedUpdater.download).toHaveBeenCalledTimes(2);
+    expect(mockedUpdater.set).toHaveBeenCalledWith({ id: 'bundle-2' });
+  });
 });

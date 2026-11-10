@@ -6,7 +6,7 @@
           <RefreshCw class="update-icon" :class="{ spinning: isWorking }" />
         </div>
         <div class="title-wrap">
-          <h3 class="modal-title">{{ isApk ? 'Pembaruan APK Baru Diperlukan' : 'Pembaruan Tersedia' }}</h3>
+          <h3 class="modal-title">Pembaruan APK Baru Diperlukan</h3>
           <span class="version-tag">Versi {{ update.versionName }} (Build {{ update.versionCode }})</span>
         </div>
       </div>
@@ -20,9 +20,8 @@
         <p class="changelog-text">{{ update.changelog || 'Peningkatan performa dan perbaikan bug.' }}</p>
       </div>
 
-      <!-- Penjelasan Play Protect — HANYA untuk unduh APK (installer sistem masih dipakai).
-           Update bundle (Capgo) tidak memicu Play Protect, jadi notice tidak ditampilkan. -->
-      <div v-if="isApk && showPlayProtectNotice" class="play-protect-notice" data-testid="play-protect-notice">
+      <!-- Penjelasan Play Protect — HANYA untuk unduh APK (installer sistem masih dipakai). -->
+      <div v-if="showPlayProtectNotice" class="play-protect-notice" data-testid="play-protect-notice">
         <div class="notice-title">
           <ShieldAlert class="notice-icon" />
           <span>Informasi Pemasangan (Play Protect)</span>
@@ -39,13 +38,6 @@
           />
           <span>Jangan tampilkan pesan ini lagi</span>
         </label>
-      </div>
-
-      <!-- Status saat memproses pembaruan bundle (Capgo tidak memberi progres %) -->
-      <div v-if="isWorking && !isApk" class="progress-section">
-        <div class="progress-info">
-          <span>Mengunduh &amp; memuat pembaruan...</span>
-        </div>
       </div>
 
       <!-- Pesan Error bila gagal -->
@@ -70,8 +62,8 @@
           :disabled="isWorking"
           @click="startUpdate"
         >
-          <span v-if="!isWorking">{{ isApk ? 'Unduh APK Baru' : 'Update Sekarang' }}</span>
-          <span v-else>{{ isApk ? 'Membuka browser...' : 'Memuat pembaruan...' }}</span>
+          <span v-if="!isWorking">Unduh APK Baru</span>
+          <span v-else>Membuka browser...</span>
         </button>
       </div>
     </div>
@@ -83,15 +75,11 @@ import { ref, computed, onMounted } from 'vue';
 import { getActivePinia } from 'pinia';
 import { RefreshCw, ShieldAlert } from 'lucide-vue-next';
 import { Browser } from '@capacitor/browser';
-import {
-  liveUpdateService,
-  type BundleUpdate,
-  type ApkUpdate,
-} from '../services/liveUpdateService';
+import type { ApkUpdate } from '../services/liveUpdateService';
 import { useSettingsStore } from '../stores/settingsStore';
 
 const props = defineProps<{
-  update: BundleUpdate | ApkUpdate;
+  update: ApkUpdate;
 }>();
 
 const emit = defineEmits<{
@@ -104,10 +92,7 @@ const isWorking = ref(false);
 const errorMessage = ref('');
 const dontShowAgain = ref(false);
 
-const isApk = computed(() => props.update.kind === 'apk');
-const forceUpdate = computed(
-  () => props.update.kind === 'apk' && props.update.forceUpdate
-);
+const forceUpdate = computed(() => props.update.forceUpdate);
 const showPlayProtectNotice = computed(() => !settingsStore?.hidePlayProtectNotice);
 
 onMounted(async () => {
@@ -127,23 +112,13 @@ async function startUpdate() {
   errorMessage.value = '';
   isWorking.value = true;
 
-  // Simpan pilihan "jangan tampilkan lagi" DULU sebelum membuka browser / menerapkan
-  // bundle, supaya pilihan user tidak hilang bila langkah berikutnya gagal.
-  if (isApk.value && dontShowAgain.value && settingsStore) {
+  if (dontShowAgain.value && settingsStore) {
     await settingsStore.setHidePlayProtectNotice(true);
   }
 
   try {
-    if (props.update.kind === 'bundle') {
-      // set() di dalam applyBundleUpdate langsung me-refresh webview bila sukses,
-      // sehingga kode setelah baris ini tidak berjalan.
-      await liveUpdateService.applyBundleUpdate(props.update);
-    } else {
-      // APK baru (perubahan native): buka link unduhan di browser sistem.
-      // TIDAK instal dari dalam aplikasi lagi — tidak ada ApkInstaller.
-      await Browser.open({ url: props.update.downloadUrl });
-      emit('dismiss');
-    }
+    await Browser.open({ url: props.update.downloadUrl });
+    emit('dismiss');
   } catch (err: unknown) {
     if (err instanceof Error) {
       errorMessage.value = err.message;

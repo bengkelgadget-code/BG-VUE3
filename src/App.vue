@@ -14,7 +14,7 @@
   <transition name="fade">
     <div
       v-if="liveUpdateToastMessage"
-      class="app-toast-success feedback-banner info"
+      class="app-toast-success feedback-banner info app-toast-secondary"
       data-testid="live-update-toast"
       style="background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe;"
     >
@@ -34,24 +34,60 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, watch, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useSettingsStore } from './stores/settingsStore';
 import { useAuthStore } from './stores/authStore';
-import { liveUpdateService, type LiveUpdateCheck } from './services/liveUpdateService';
+import { liveUpdateService, type ApkUpdate } from './services/liveUpdateService';
 import { supabaseSyncService } from './services/supabaseSyncService';
 import UpdateDialog from './components/UpdateDialog.vue';
 import CloudSyncDialog from './components/CloudSyncDialog.vue';
 
+const router = useRouter();
 const settingsStore = useSettingsStore();
 const authStore = useAuthStore();
 
-const availableUpdate = ref<Exclude<LiveUpdateCheck, { kind: 'none' }> | null>(null);
+const availableUpdate = ref<ApkUpdate | null>(null);
 const showCloudSyncDialog = ref(false);
 const syncSuccessMessage = ref('');
 const liveUpdateToastMessage = ref('');
 
+const pendingBundle = ref<{ bundle: { id: string }; version: string } | null>(null);
+
+function isAtHome(): boolean {
+  if (!router) return true;
+  const current = router.currentRoute.value;
+  return current.name === 'Home' || current.path === '/';
+}
+
+function isSafeToApply(): boolean {
+  return isAtHome() && !showCloudSyncDialog.value;
+}
+
+async function tryApplyPendingBundle() {
+  if (!pendingBundle.value || !isSafeToApply()) return;
+  const { bundle, version } = pendingBundle.value;
+  pendingBundle.value = null;
+  liveUpdateToastMessage.value = 'Memuat pembaruan...';
+  try {
+    await liveUpdateService.applyDownloadedBundle(bundle, version);
+  } catch {
+    liveUpdateToastMessage.value = '';
+  }
+}
+
+// Tunda reload bila route saat ini bukan Home atau dialog sinkron sedang terbuka (b12)
+watch(
+  [() => router?.currentRoute.value.path, () => showCloudSyncDialog.value],
+  () => {
+    if (pendingBundle.value && isSafeToApply()) {
+      tryApplyPendingBundle();
+    }
+  }
+);
+
 function handleDismissUpdate() {
-  if (availableUpdate.value?.kind === 'apk' && availableUpdate.value.forceUpdate) {
+  if (availableUpdate.value?.forceUpdate) {
     return;
   }
   availableUpdate.value = null;
@@ -72,29 +108,7 @@ onMounted(async () => {
   await settingsStore.loadSettings();
   await authStore.checkInit();
 
-  // Pengecekan live update otomatis saat aplikasi dibuka (silent check ala Server Pulsa, Capgo).
-  // Hanya berjalan di native; gagal/offline diabaikan diam-diam.
-  try {
-    const update = await liveUpdateService.checkForUpdate();
-    if (update.kind === 'bundle') {
-      liveUpdateToastMessage.value = 'Mengunduh pembaruan...';
-      try {
-        await liveUpdateService.applyBundleUpdate(update, (step) => {
-          if (step === 'loading') {
-            liveUpdateToastMessage.value = 'Memuat pembaruan...';
-          }
-        });
-      } catch {
-        liveUpdateToastMessage.value = '';
-      }
-    } else if (update.kind === 'apk') {
-      availableUpdate.value = update;
-    }
-  } catch {
-    // Abaikan jika offline / koneksi gagal
-  }
-
-  // Pengecekan sinkronisasi Supabase saat aplikasi dibuka (b9).
+  // 1. Pengecekan sinkronisasi Supabase saat aplikasi dibuka (b9).
   // Data kosong & terkonfigurasi & ada data cloud -> tawarkan dialog tarik data.
   // Bila data lokal sudah ada -> jalankan pushAll secara silent.
   try {
@@ -116,6 +130,37 @@ onMounted(async () => {
   } catch {
     // Abaikan diam-diam bila offline / gagal
   }
+
+  // 2. Pengecekan live update otomatis saat aplikasi dibuka (silent check ala Server Pulsa, Capgo).
+  // Hanya berjalan di native; gagal/offline diabaikan diam-diam.
+  try {
+    const update = await liveUpdateService.checkForUpdate();
+    if (update.kind === 'bundle') {
+      liveUpdateToastMessage.value = 'Mengunduh pembaruan...';
+      try {
+        const bundle = await liveUpdateService.downloadBundle(update);
+        if (isSafeToApply()) {
+          liveUpdateToastMessage.value = 'Memuat pembaruan...';
+          await liveUpdateService.applyDownloadedBundle(bundle, update.bundleVersion);
+        } else {
+          // Tunda reload jika sedang di luar Home atau dialog sinkron sedang terbuka (b12)
+          pendingBundle.value = { bundle, version: update.bundleVersion };
+          liveUpdateToastMessage.value = 'Pembaruan siap, akan diterapkan di Beranda.';
+          setTimeout(() => {
+            if (liveUpdateToastMessage.value.includes('Pembaruan siap')) {
+              liveUpdateToastMessage.value = '';
+            }
+          }, 4000);
+        }
+      } catch {
+        liveUpdateToastMessage.value = '';
+      }
+    } else if (update.kind === 'apk') {
+      availableUpdate.value = update;
+    }
+  } catch {
+    // Abaikan jika offline / koneksi gagal
+  }
 });
 </script>
 
@@ -133,6 +178,10 @@ onMounted(async () => {
   min-width: 280px;
   max-width: 90%;
   text-align: center;
+}
+
+.app-toast-secondary {
+  top: 72px;
 }
 
 .fade-enter-active,

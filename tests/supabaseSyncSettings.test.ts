@@ -7,6 +7,7 @@ import { db } from '../src/db/database';
 import { useAuthStore } from '../src/stores/authStore';
 import { useSettingsStore } from '../src/stores/settingsStore';
 import { supabaseSyncService } from '../src/services/supabaseSyncService';
+import { liveUpdateService } from '../src/services/liveUpdateService';
 import SettingsView from '../src/views/SettingsView.vue';
 import CloudSyncDialog from '../src/components/CloudSyncDialog.vue';
 import App from '../src/App.vue';
@@ -213,6 +214,44 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
 
       expect(settingsStore.cloudAutoSync).toBe(false);
     });
+
+    it('(c) handleCheckUpdate gagal di download/apply: successMessage kosong dan teks error menyebut unduh/terapkan', async () => {
+      const authStore = useAuthStore();
+      authStore.currentUser = {
+        id: 'owner-1',
+        name: 'Owner',
+        role: 'owner',
+        pinHash: 'h',
+        isActive: true,
+        createdAt: Date.now(),
+      };
+
+      vi.spyOn(liveUpdateService, 'checkForUpdate').mockResolvedValue({
+        kind: 'bundle',
+        bundleVersion: '123',
+        bundleUrl: 'https://example.com/update.zip',
+        versionName: '0.2.0',
+        versionCode: 12,
+        changelog: 'Test update',
+      });
+      vi.spyOn(liveUpdateService, 'applyBundleUpdate').mockRejectedValue(new Error('Network failure'));
+
+      const wrapper = mount(SettingsView, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+
+      const checkBtn = wrapper.find('.btn-check-update');
+      await checkBtn.trigger('click');
+      await flushPromises();
+
+      const success = wrapper.find('.feedback-banner.success');
+      expect(success.exists()).toBe(false);
+
+      const err = wrapper.find('.feedback-banner.error');
+      expect(err.exists()).toBe(true);
+      expect(err.text()).toContain('Gagal mengunduh pembaruan. Coba lagi.');
+    });
   });
 
   describe('2. CloudSyncDialog Component', () => {
@@ -306,6 +345,110 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
       expect(wrapper.findComponent(CloudSyncDialog).exists()).toBe(false);
       // pushAll dipanggil secara silent
       expect(pushSpy).toHaveBeenCalled();
+    });
+
+    it('(b1) auto-apply bundle: saat route BUKAN Home, set() TIDAK dipanggil sampai kembali ke Home', async () => {
+      await db.users.add({
+        id: 'user-1',
+        name: 'User 1',
+        role: 'owner',
+        pinHash: 'hash',
+        isActive: true,
+        createdAt: Date.now(),
+      });
+      localStorage.setItem('buku_konter_active_user_id', 'user-1');
+
+      vi.spyOn(supabaseSyncService, 'isConfigured').mockReturnValue(false);
+      vi.spyOn(liveUpdateService, 'checkForUpdate').mockResolvedValue({
+        kind: 'bundle',
+        bundleVersion: '999',
+        bundleUrl: 'https://example.com/update.zip',
+        versionName: '0.2.0',
+        versionCode: 12,
+        changelog: 'OTA b12',
+      });
+      const downloadSpy = vi.spyOn(liveUpdateService, 'downloadBundle').mockResolvedValue({ id: 'bundle-test' });
+      const applySpy = vi.spyOn(liveUpdateService, 'applyDownloadedBundle').mockResolvedValue();
+
+      await router.push('/settings');
+      await flushPromises();
+
+      const wrapper = mount(App, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      // Download jalan di background
+      expect(downloadSpy).toHaveBeenCalled();
+      // Reload (set) DITUNDA karena route bukan Home
+      expect(applySpy).not.toHaveBeenCalled();
+
+      // Toast "Pembaruan siap" tampil
+      const toast = wrapper.find('[data-testid="live-update-toast"]');
+      expect(toast.exists()).toBe(true);
+      expect(toast.text()).toContain('Pembaruan siap, akan diterapkan di Beranda');
+
+      // Navigasi kembali ke Home -> applyDownloadedBundle baru dipanggil!
+      await router.push('/');
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      expect(applySpy).toHaveBeenCalledWith({ id: 'bundle-test' }, '999');
+    });
+
+    it('(b2) auto-apply bundle: saat dialog sinkron tampil, set() TIDAK dipanggil sampai dialog ditutup', async () => {
+      await db.users.add({
+        id: 'user-1',
+        name: 'User 1',
+        role: 'owner',
+        pinHash: 'hash',
+        isActive: true,
+        createdAt: Date.now(),
+      });
+      localStorage.setItem('buku_konter_active_user_id', 'user-1');
+
+      vi.spyOn(supabaseSyncService, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(supabaseSyncService, 'isLocalEmpty').mockResolvedValue(true);
+      vi.spyOn(supabaseSyncService, 'hasCloudData').mockResolvedValue(true);
+
+      vi.spyOn(liveUpdateService, 'checkForUpdate').mockResolvedValue({
+        kind: 'bundle',
+        bundleVersion: '999',
+        bundleUrl: 'https://example.com/update.zip',
+        versionName: '0.2.0',
+        versionCode: 12,
+        changelog: 'OTA b12',
+      });
+      const downloadSpy = vi.spyOn(liveUpdateService, 'downloadBundle').mockResolvedValue({ id: 'bundle-test' });
+      const applySpy = vi.spyOn(liveUpdateService, 'applyDownloadedBundle').mockResolvedValue();
+
+      await router.push('/');
+      await flushPromises();
+
+      const wrapper = mount(App, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      // Dialog sinkron muncul
+      expect(wrapper.findComponent(CloudSyncDialog).exists()).toBe(true);
+      expect(downloadSpy).toHaveBeenCalled();
+      // applyDownloadedBundle DITUNDA karena dialog sinkron sedang terbuka
+      expect(applySpy).not.toHaveBeenCalled();
+
+      // Tutup dialog
+      wrapper.findComponent(CloudSyncDialog).vm.$emit('dismiss');
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      // Sekarang applyDownloadedBundle dipanggil!
+      expect(applySpy).toHaveBeenCalledWith({ id: 'bundle-test' }, '999');
     });
   });
 });

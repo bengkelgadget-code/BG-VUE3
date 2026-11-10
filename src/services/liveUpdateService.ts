@@ -50,6 +50,7 @@ export class LiveUpdateService {
   private fetchFn: typeof fetch;
   private getInstalledCodeFn: () => Promise<number>;
   private updater: UpdaterLike;
+  private isUpdating = false;
 
   constructor(opts?: {
     updateCheckUrl?: string;
@@ -79,6 +80,10 @@ export class LiveUpdateService {
     this.updateCheckUrl = url;
   }
 
+  public getIsUpdating(): boolean {
+    return this.isUpdating;
+  }
+
   public async getInstalledVersionCode(): Promise<number> {
     return this.getInstalledCodeFn();
   }
@@ -88,7 +93,7 @@ export class LiveUpdateService {
    * 'none' = sudah terbaru / belum ada info bundle / gagal baca versi terpasang.
    */
   public async checkForUpdate(): Promise<LiveUpdateCheck> {
-    if (!Capacitor.isNativePlatform()) {
+    if (!Capacitor.isNativePlatform() || this.isUpdating) {
       return { kind: 'none' };
     }
 
@@ -154,25 +159,49 @@ export class LiveUpdateService {
    * sehingga kode setelahnya tidak berjalan bila sukses. Gagal → `app_version` dihapus
    * supaya dicoba lagi saat aplikasi dibuka berikutnya, lalu error dilempar ke pemanggil.
    */
-  public async applyBundleUpdate(update: BundleUpdate, onProgress?: (step: 'downloading' | 'loading') => void): Promise<void> {
+  public async downloadBundle(update: BundleUpdate): Promise<{ id: string }> {
+    if (this.isUpdating) {
+      throw new Error('Proses pembaruan sedang berjalan.');
+    }
     if (!update.bundleUrl) {
       throw new Error('URL bundle tidak valid.');
     }
+    this.isUpdating = true;
     try {
-      onProgress?.('downloading');
       const bundle = await this.updater.download({
         url: update.bundleUrl,
         version: update.bundleVersion,
       });
-      // Simpan versi SEBELUM set() karena set() langsung me-refresh webview.
-      localStorage.setItem(APP_VERSION_STORAGE_KEY, update.bundleVersion);
-      onProgress?.('loading');
-      await this.updater.set({ id: bundle.id });
+      return bundle;
     } catch (err) {
+      this.isUpdating = false;
       localStorage.removeItem(APP_VERSION_STORAGE_KEY);
       throw err;
     }
   }
+
+  public async applyDownloadedBundle(bundle: { id: string }, version: string): Promise<void> {
+    try {
+      localStorage.setItem(APP_VERSION_STORAGE_KEY, version);
+      await this.updater.set({ id: bundle.id });
+    } catch (err) {
+      this.isUpdating = false;
+      localStorage.removeItem(APP_VERSION_STORAGE_KEY);
+      throw err;
+    }
+  }
+
+  public async applyBundleUpdate(
+    update: BundleUpdate,
+    onProgress?: (step: 'downloading' | 'loading') => void,
+  ): Promise<void> {
+    onProgress?.('downloading');
+    const bundle = await this.downloadBundle(update);
+    onProgress?.('loading');
+    await this.applyDownloadedBundle(bundle, update.bundleVersion);
+  }
+
+
 }
 
 export const liveUpdateService = new LiveUpdateService();

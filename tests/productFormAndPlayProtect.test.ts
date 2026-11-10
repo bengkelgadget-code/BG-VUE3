@@ -353,5 +353,15 @@ describe('b7: Brand Service, Form Tambah Produk Master & Play Protect Notice', (
 
       expect(wrapper2.find('[data-testid="play-protect-notice"]').exists()).toBe(false);
     });
+
+    it('(d) UpdateDialog hanya menangani update APK, judul modal dan tombol disesuaikan untuk unduh APK', async () => {
+      const wrapper = mount(UpdateDialog, {
+        props: { update: mockUpdate },
+      });
+      await flushPromises();
+
+      expect(wrapper.find('.modal-title').text()).toBe('Pembaruan APK Baru Diperlukan');
+      expect(wrapper.find('.btn-update-action').text()).toContain('Unduh APK Baru');
+    });
   });
 });
