@@ -10,6 +10,17 @@
       {{ syncSuccessMessage }}
     </div>
   </transition>
+  <!-- Toast Live Update Otomatis (ala Server Pulsa) -->
+  <transition name="fade">
+    <div
+      v-if="liveUpdateToastMessage"
+      class="app-toast-success feedback-banner info"
+      data-testid="live-update-toast"
+      style="background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe;"
+    >
+      {{ liveUpdateToastMessage }}
+    </div>
+  </transition>
   <UpdateDialog
     v-if="availableUpdate"
     :update="availableUpdate"
@@ -37,6 +48,7 @@ const authStore = useAuthStore();
 const availableUpdate = ref<Exclude<LiveUpdateCheck, { kind: 'none' }> | null>(null);
 const showCloudSyncDialog = ref(false);
 const syncSuccessMessage = ref('');
+const liveUpdateToastMessage = ref('');
 
 function handleDismissUpdate() {
   if (availableUpdate.value?.kind === 'apk' && availableUpdate.value.forceUpdate) {
@@ -60,11 +72,22 @@ onMounted(async () => {
   await settingsStore.loadSettings();
   await authStore.checkInit();
 
-  // Pengecekan live update otomatis saat aplikasi dibuka (silent check, Capgo).
+  // Pengecekan live update otomatis saat aplikasi dibuka (silent check ala Server Pulsa, Capgo).
   // Hanya berjalan di native; gagal/offline diabaikan diam-diam.
   try {
     const update = await liveUpdateService.checkForUpdate();
-    if (update.kind !== 'none') {
+    if (update.kind === 'bundle') {
+      liveUpdateToastMessage.value = 'Mengunduh pembaruan...';
+      try {
+        await liveUpdateService.applyBundleUpdate(update, (step) => {
+          if (step === 'loading') {
+            liveUpdateToastMessage.value = 'Memuat pembaruan...';
+          }
+        });
+      } catch {
+        liveUpdateToastMessage.value = '';
+      }
+    } else if (update.kind === 'apk') {
       availableUpdate.value = update;
     }
   } catch {

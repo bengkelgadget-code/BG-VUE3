@@ -92,7 +92,9 @@ export class LiveUpdateService {
       return { kind: 'none' };
     }
 
-    const res = await this.fetchFn(this.updateCheckUrl, { cache: 'no-store' });
+    const separator = this.updateCheckUrl.includes('?') ? '&' : '?';
+    const checkUrl = `${this.updateCheckUrl}${separator}t=${Date.now()}`;
+    const res = await this.fetchFn(checkUrl, { cache: 'no-store' });
     if (!res.ok) {
       throw new Error(`Gagal memeriksa pembaruan: HTTP ${res.status}`);
     }
@@ -152,17 +154,19 @@ export class LiveUpdateService {
    * sehingga kode setelahnya tidak berjalan bila sukses. Gagal → `app_version` dihapus
    * supaya dicoba lagi saat aplikasi dibuka berikutnya, lalu error dilempar ke pemanggil.
    */
-  public async applyBundleUpdate(update: BundleUpdate): Promise<void> {
+  public async applyBundleUpdate(update: BundleUpdate, onProgress?: (step: 'downloading' | 'loading') => void): Promise<void> {
     if (!update.bundleUrl) {
       throw new Error('URL bundle tidak valid.');
     }
     try {
+      onProgress?.('downloading');
       const bundle = await this.updater.download({
         url: update.bundleUrl,
         version: update.bundleVersion,
       });
       // Simpan versi SEBELUM set() karena set() langsung me-refresh webview.
       localStorage.setItem(APP_VERSION_STORAGE_KEY, update.bundleVersion);
+      onProgress?.('loading');
       await this.updater.set({ id: bundle.id });
     } catch (err) {
       localStorage.removeItem(APP_VERSION_STORAGE_KEY);

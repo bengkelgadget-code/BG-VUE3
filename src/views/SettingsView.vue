@@ -298,7 +298,12 @@ async function handleCheckUpdate() {
   try {
     const update = await liveUpdateService.checkForUpdate();
     if (update.kind !== 'none') {
-      availableUpdate.value = update;
+      if (update.kind === 'bundle') {
+        showSuccess('Mengunduh & menerapkan pembaruan...');
+        await liveUpdateService.applyBundleUpdate(update);
+      } else {
+        availableUpdate.value = update;
+      }
     } else {
       showSuccess(`Aplikasi sudah versi terbaru (v${APP_VERSION}).`);
     }

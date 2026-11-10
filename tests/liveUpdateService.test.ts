@@ -206,4 +206,36 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
 
     await expect(service.checkForUpdate()).rejects.toThrow('URL bundle');
   });
+
+  it('checkForUpdate memanggil fetch dengan parameter cache-buster ?t= dan cache: no-store', async () => {
+    localStorage.setItem(APP_VERSION_STORAGE_KEY, '1760000000000');
+    const { service, fetchFn } = makeService(makeVersionJson());
+
+    await service.checkForUpdate();
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const mockFn = fetchFn as unknown as { mock: { calls: Array<[string, RequestInit]> } };
+    const calledUrl = mockFn.mock.calls[0][0];
+    const calledOpts = mockFn.mock.calls[0][1];
+
+    expect(calledUrl).toMatch(/[?&]t=\d+/);
+    expect(calledOpts).toEqual({ cache: 'no-store' });
+  });
+
+  it('applyBundleUpdate memanggil callback onProgress dengan step downloading dan loading', async () => {
+    const { service } = makeService(makeVersionJson());
+    const update: BundleUpdate = {
+      kind: 'bundle',
+      bundleVersion: '1770000000000',
+      bundleUrl: 'https://example.com/update.zip',
+      versionName: '0.2.0',
+      versionCode: 8,
+      changelog: 'Update Capgo b8',
+    };
+
+    const steps: string[] = [];
+    await service.applyBundleUpdate(update, (step) => steps.push(step));
+
+    expect(steps).toEqual(['downloading', 'loading']);
+  });
 });
