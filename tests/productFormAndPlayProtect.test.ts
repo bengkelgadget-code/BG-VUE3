@@ -12,7 +12,7 @@ import router from '../src/router';
 import ProductFormView from '../src/views/ProductFormView.vue';
 import AppScaffold from '../src/components/AppScaffold.vue';
 import UpdateDialog from '../src/components/UpdateDialog.vue';
-import type { VersionInfo } from '../src/services/updateService';
+import type { ApkUpdate } from '../src/services/liveUpdateService';
 
 describe('b7: Brand Service, Form Tambah Produk Master & Play Protect Notice', () => {
   beforeEach(async () => {
@@ -283,7 +283,8 @@ describe('b7: Brand Service, Form Tambah Produk Master & Play Protect Notice', (
   });
 
   describe('4. UpdateDialog & Penjelasan Play Protect', () => {
-    const mockUpdate: VersionInfo = {
+    const mockUpdate: ApkUpdate = {
+      kind: 'apk',
       versionCode: 7,
       versionName: '0.2.0',
       downloadUrl: 'https://example.com/buku-konter-v0.2.0-b7.apk',
