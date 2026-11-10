@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Capacitor } from '@capacitor/core';
+import { Filesystem } from '@capacitor/filesystem';
 import { App } from '@capacitor/app';
 import {
   UpdateService,
@@ -18,6 +19,23 @@ vi.mock('@capacitor/app', () => ({
       build: '3',
       version: '0.2.0',
     }),
+  },
+}));
+
+// Filesystem web di jsdom tidak punya IndexedDB — mock agar alur unduh bisa
+// diuji sampai ke langkah installer (bukan gagal di writeFile).
+vi.mock('@capacitor/filesystem', () => ({
+  Filesystem: {
+    writeFile: vi.fn().mockResolvedValue({ uri: '' }),
+    getUri: vi.fn().mockResolvedValue({ uri: 'file:///cache/buku-konter-update.apk' }),
+  },
+  Directory: {
+    Cache: 'CACHE',
+    Data: 'DATA',
+    Documents: 'DOCUMENTS',
+    External: 'EXTERNAL',
+    ExternalStorage: 'EXTERNAL_STORAGE',
+    Library: 'LIBRARY',
   },
 }));
 
@@ -335,6 +353,121 @@ describe('UpdateService (OTA GitHub Pattern Setel)', () => {
 
       expect(App.getInfo).toHaveBeenCalled();
       expect(setCodeSpy).toHaveBeenCalledWith(3);
+    });
+  });
+
+  describe('OTA CORS: unduhan native via CapacitorHttp (bukan fetch)', () => {
+    it('di platform native, downloadAndInstall memakai request native (arraybuffer) dan TIDAK memanggil fetch', async () => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      const fakeBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      const requestSpy = vi.fn().mockResolvedValue({
+        status: 200,
+        headers: { 'content-length': '4' },
+        data: fakeBytes.buffer,
+        url: 'https://example.com/app.apk',
+      });
+      const nativeService = new UpdateService({
+        currentVersionCode: 1,
+        updateCheckUrl: 'https://example.com/version.json',
+        nativeHttpRequest: requestSpy as never,
+      });
+      const fetchSpy = vi.fn();
+      globalThis.fetch = fetchSpy;
+      // Mock Filesystem (factory) sudah di-restore oleh afterEach test sebelumnya —
+      // pasang lagi implementasinya di sini.
+      vi.mocked(Filesystem.writeFile).mockResolvedValue({ uri: '' });
+      vi.mocked(Filesystem.getUri).mockResolvedValue({ uri: 'file:///cache/buku-konter-update.apk' });
+
+      // Di jsdom, ApkInstaller native tidak terimplementasi — alur akan gagal tepat
+      // di langkah installer (bukan di unduhan). Yang diuji di sini: request native
+      // terpanggil dengan benar dan fetch tidak dipakai sama sekali.
+      await expect(
+        nativeService.downloadAndInstall(
+          {
+            versionCode: 6,
+            versionName: '0.2.0',
+            downloadUrl: 'https://example.com/app.apk',
+            changelog: 'Update',
+            forceUpdate: false,
+          },
+          () => {},
+        ),
+      ).rejects.toThrow(/not implemented/i);
+
+      expect(requestSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'GET',
+          url: 'https://example.com/app.apk',
+          responseType: 'arraybuffer',
+        }),
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('unduhan native yang tidak lengkap (content-length tidak cocok) langsung ditolak sebelum installer', async () => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      const nativeService = new UpdateService({
+        currentVersionCode: 1,
+        updateCheckUrl: 'https://example.com/version.json',
+        nativeHttpRequest: vi.fn().mockResolvedValue({
+          status: 200,
+          headers: { 'content-length': '100' },
+          data: new Uint8Array([0x50, 0x4b]).buffer,
+          url: 'https://example.com/app.apk',
+        }) as never,
+      });
+
+      await expect(
+        nativeService.downloadAndInstall(
+          {
+            versionCode: 6,
+            versionName: '0.2.0',
+            downloadUrl: 'https://example.com/app.apk',
+            changelog: 'Update',
+            forceUpdate: false,
+          },
+          () => {},
+        ),
+      ).rejects.toThrow(/tidak lengkap/i);
+    });
+
+    it('unduhan web (fetch) yang tidak lengkap juga ditolak', async () => {
+      const fakeData = new Uint8Array([0x50, 0x4b]);
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (h: string) => (h === 'content-length' ? '100' : null),
+        },
+        blob: async () => new Blob([fakeData]),
+        body: {
+          getReader: () => {
+            let read = false;
+            return {
+              read: async () => {
+                if (!read) {
+                  read = true;
+                  return { done: false, value: fakeData };
+                }
+                return { done: true, value: undefined };
+              },
+            };
+          },
+        },
+      } as unknown as Response);
+
+      await expect(
+        updateService.downloadAndInstall(
+          {
+            versionCode: 6,
+            versionName: '0.2.0',
+            downloadUrl: 'https://example.com/app.apk',
+            changelog: 'Update',
+            forceUpdate: false,
+          },
+          () => {},
+        ),
+      ).rejects.toThrow(/tidak lengkap/i);
     });
   });
 

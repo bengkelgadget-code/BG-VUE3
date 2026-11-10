@@ -19,18 +19,39 @@ const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller');
 // Fallback jika di lingkungan web/dev tanpa platform native
 export const DEFAULT_WEB_FALLBACK_VERSION_CODE = 6;
 
-// Batas bawah kewajaran ukuran APK (b6 ~5,4 MB). Dipakai hanya bila server
-// tidak mengirim header content-length, untuk menolak halaman error HTML
-// (biasanya puluhan KB) yang tersamar sebagai APK.
-export const MIN_APK_BYTES = 1_000_000;
+/**
+ * Normalisasi hasil unduhan native menjadi Uint8Array.
+ * CapacitorHttp dengan responseType 'arraybuffer' mengembalikan ArrayBuffer,
+ * tapi di beberapa platform bridge mengembalikan string base64 — tangani keduanya.
+ */
+function toUint8Array(data: unknown): Uint8Array {
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (data instanceof Uint8Array) return data;
+  if (typeof data === 'string') {
+    const bin = atob(data);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  throw new Error('Format data unduhan tidak dikenali.');
+}
 
 export class UpdateService {
   private currentVersionCode: number = DEFAULT_WEB_FALLBACK_VERSION_CODE;
   private isManuallySet: boolean = false;
   private updateCheckUrl: string =
     'https://raw.githubusercontent.com/bengkelgadget-code/BG-VUE3/main/version.json';
+  // Fungsi unduh native — defaultnya CapacitorHttp.request. Bisa di-override
+  // lewat constructor untuk pengujian (CapacitorHttp adalah proxy registerPlugin
+  // yang method-nya baru muncul setelah plugin native ter-load, jadi tidak bisa
+  // di-spyOn langsung di jsdom).
+  private nativeHttpRequest: typeof CapacitorHttp.request;
 
-  constructor(opts?: { currentVersionCode?: number; updateCheckUrl?: string }) {
+  constructor(opts?: {
+    currentVersionCode?: number;
+    updateCheckUrl?: string;
+    nativeHttpRequest?: typeof CapacitorHttp.request;
+  }) {
     if (opts?.currentVersionCode !== undefined) {
       this.currentVersionCode = opts.currentVersionCode;
       this.isManuallySet = true;
@@ -38,6 +59,8 @@ export class UpdateService {
     if (opts?.updateCheckUrl !== undefined) {
       this.updateCheckUrl = opts.updateCheckUrl;
     }
+    this.nativeHttpRequest =
+      opts?.nativeHttpRequest ?? ((o) => CapacitorHttp.request(o));
   }
 
   public setCheckUrl(url: string): void {
@@ -110,135 +133,6 @@ export class UpdateService {
   }
 
   /**
-   * Validasi ukuran hasil unduhan. File yang tidak lengkap DITOLAK dengan
-   * pesan jelas — jangan pernah lanjut ke instalasi.
-   */
-  private validateDownloadSize(receivedBytes: number, expectedBytes: number): void {
-    if (expectedBytes > 0 && receivedBytes !== expectedBytes) {
-      throw new Error(
-        `Unduhan APK tidak lengkap: diterima ${receivedBytes} dari ${expectedBytes} byte. ` +
-          'File dibuang, instalasi dibatalkan — coba lagi saat koneksi stabil.'
-      );
-    }
-    if (expectedBytes <= 0 && receivedBytes < MIN_APK_BYTES) {
-      throw new Error(
-        `Unduhan APK tidak lengkap atau mencurigakan: hanya ${receivedBytes} byte ` +
-          `(ukuran APK normal di atas ${MIN_APK_BYTES} byte). ` +
-          'File dibuang, instalasi dibatalkan.'
-      );
-    }
-  }
-
-  /**
-   * Ambil header content-length tanpa peduli kapitalisasi kunci header.
-   */
-  private getContentLength(headers: Record<string, string | string[] | undefined>): number {
-    for (const [key, value] of Object.entries(headers)) {
-      if (key.toLowerCase() === 'content-length') {
-        const raw = Array.isArray(value) ? value[0] : value;
-        return Number(raw) || 0;
-      }
-    }
-    return 0;
-  }
-
-  /**
-   * Normalisasi data biner dari CapacitorHttp. Di platform native data
-   * bertipe ArrayBuffer; di sebagian versi Capacitor bisa berupa string
-   * base64 — keduanya diterima.
-   */
-  private toUint8Array(data: unknown): Uint8Array {
-    if (data instanceof Uint8Array) return data;
-    if (data instanceof ArrayBuffer) return new Uint8Array(data);
-    if (Array.isArray(data)) return new Uint8Array(data as number[]);
-    if (typeof data === 'string') {
-      const binary = atob(data);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      return bytes;
-    }
-    throw new Error('Format data unduhan APK tidak dikenali.');
-  }
-
-  /**
-   * Unduh APK dan kembalikan byte-nya (tanpa menyimpan / menginstal).
-   *
-   * b6: di platform native unduhan WAJIB lewat CapacitorHttp (HTTP native
-   * Android, tidak kena CORS). fetch() di WebView diblokir host release
-   * GitHub ("Failed to fetch") sehingga update b5 tidak pernah terunduh.
-   * Jalur fetch hanya dipertahankan untuk web/dev, dengan validasi ukuran
-   * yang sama.
-   */
-  public async downloadApk(
-    version: VersionInfo,
-    onProgress: (pct: number) => void
-  ): Promise<Uint8Array> {
-    if (!version.downloadUrl) {
-      throw new Error('URL unduhan APK tidak valid.');
-    }
-
-    if (Capacitor.isNativePlatform()) {
-      // HTTP native mengikuti redirect 302 GitHub Release -> object storage.
-      const res = await CapacitorHttp.get({
-        url: version.downloadUrl,
-        responseType: 'arraybuffer',
-      });
-      if (res.status < 200 || res.status >= 300) {
-        throw new Error(`Gagal mengunduh file APK: HTTP ${res.status}`);
-      }
-      const bytes = this.toUint8Array(res.data);
-      this.validateDownloadSize(bytes.length, this.getContentLength(res.headers ?? {}));
-      onProgress(100);
-      return bytes;
-    }
-
-    const res = await fetch(version.downloadUrl);
-    if (!res.ok) {
-      throw new Error(`Gagal mengunduh file APK: HTTP ${res.status}`);
-    }
-
-    const contentLength = Number(res.headers.get('content-length')) || 0;
-    const reader = res.body?.getReader();
-    const chunks: Uint8Array[] = [];
-    let receivedBytes = 0;
-
-    if (reader) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value);
-          receivedBytes += value.length;
-          if (contentLength > 0) {
-            const pct = Math.min(100, Math.round((receivedBytes / contentLength) * 100));
-            onProgress(pct);
-          }
-        }
-      }
-    } else {
-      const blob = await res.blob();
-      const buf = await blob.arrayBuffer();
-      chunks.push(new Uint8Array(buf));
-      receivedBytes = buf.byteLength;
-      onProgress(100);
-    }
-
-    const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
-    const combined = new Uint8Array(totalLen);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    this.validateDownloadSize(combined.length, contentLength);
-    onProgress(100);
-    return combined;
-  }
-
-  /**
    * Unduh update APK sungguhan dan luncurkan installer native Android via Capacitor
    */
   public async downloadAndInstall(
@@ -247,8 +141,83 @@ export class UpdateService {
   ): Promise<void> {
     onProgress(0);
 
-    // Melempar di sini = instalasi tidak dilanjutkan (file tidak lengkap).
-    const combined = await this.downloadApk(version, onProgress);
+    if (!version.downloadUrl) {
+      throw new Error('URL unduhan APK tidak valid.');
+    }
+
+    // Di platform native, unduh via CapacitorHttp (request native) — BUKAN fetch().
+    // Alasan: fetch() di WebView kena blokir CORS saat mengunduh dari host release GitHub
+    // (release-assets.githubusercontent.com tidak mengirim Access-Control-Allow-Origin),
+    // sehingga update selalu gagal dengan "Failed to fetch" padahal APK-nya baik-baik saja.
+    // Request native tidak kena CORS. Di web/dev/test tetap pakai fetch seperti sebelumnya.
+    let combined: Uint8Array;
+    if (Capacitor.isNativePlatform()) {
+      const nativeRes = await this.nativeHttpRequest({
+        method: 'GET',
+        url: version.downloadUrl,
+        responseType: 'arraybuffer',
+      });
+      if (nativeRes.status < 200 || nativeRes.status >= 300) {
+        throw new Error(`Gagal mengunduh file APK: HTTP ${nativeRes.status}`);
+      }
+      combined = toUint8Array(nativeRes.data);
+      onProgress(100);
+      const expectedLen = Number(
+        nativeRes.headers?.['content-length'] ?? nativeRes.headers?.['Content-Length'] ?? 0
+      );
+      if (expectedLen > 0 && combined.byteLength !== expectedLen) {
+        throw new Error(
+          `Unduhan tidak lengkap (${combined.byteLength} dari ${expectedLen} byte). Coba lagi.`
+        );
+      }
+    } else {
+      const res = await fetch(version.downloadUrl);
+      if (!res.ok) {
+        throw new Error(`Gagal mengunduh file APK: HTTP ${res.status}`);
+      }
+
+      const contentLength = Number(res.headers.get('content-length')) || 0;
+      const reader = res.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let receivedBytes = 0;
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            receivedBytes += value.length;
+            if (contentLength > 0) {
+              const pct = Math.min(100, Math.round((receivedBytes / contentLength) * 100));
+              onProgress(pct);
+            }
+          }
+        }
+      } else {
+        const blob = await res.blob();
+        const buf = await blob.arrayBuffer();
+        chunks.push(new Uint8Array(buf));
+        receivedBytes = buf.byteLength;
+        onProgress(100);
+      }
+
+      onProgress(100);
+
+      const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+      const merged = new Uint8Array(totalLen);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      if (contentLength > 0 && merged.byteLength !== contentLength) {
+        throw new Error(
+          `Unduhan tidak lengkap (${merged.byteLength} dari ${contentLength} byte). Coba lagi.`
+        );
+      }
+      combined = merged;
+    }
 
     // Simpan file APK ke cache filesystem
     let binary = '';
