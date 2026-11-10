@@ -17,7 +17,7 @@ interface ApkInstallerPlugin {
 const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller');
 
 // Fallback jika di lingkungan web/dev tanpa platform native
-export const DEFAULT_WEB_FALLBACK_VERSION_CODE = 6;
+export const DEFAULT_WEB_FALLBACK_VERSION_CODE = 7;
 
 // Batas bawah kewajaran ukuran APK (b6 ~5,4 MB). Dipakai hanya bila server
 // tidak mengirim header content-length, untuk menolak halaman error HTML

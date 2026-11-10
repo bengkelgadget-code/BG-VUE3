@@ -168,6 +168,9 @@
             <span>{{ isCheckingUpdate ? 'Memeriksa...' : 'Cek Pembaruan' }}</span>
           </button>
         </div>
+        <div class="ota-play-protect-hint">
+          💡 <strong>Catatan Pemasangan:</strong> Karena diinstal mandiri (sideload), Google Play Protect kadang menampilkan peringatan. Aplikasi ini 100% aman dibuat sendiri — pilih <em>"Detail selengkapnya" → "Tetap instal"</em> jika peringatan muncul.
+        </div>
       </div>
 
       <!-- Section Tentang Aplikasi -->
@@ -590,6 +593,17 @@ async function handleFileRestore(e: Event) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.ota-play-protect-hint {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--color-warning-subtle, #fef3c7);
+  border: 1px solid var(--color-warning, #f59e0b);
+  border-radius: 8px;
+  font-size: 11px;
+  color: #78350f;
+  line-height: 1.45;
 }
 
 .btn-check-update {

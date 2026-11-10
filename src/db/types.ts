@@ -188,10 +188,17 @@ export interface AuditLog {
   createdAt: number;
 }
 
+export interface Brand {
+  id: string; // uuid, PK
+  name: string; // nama brand/operator
+  createdAt: number; // epoch ms
+}
+
 export interface AppSettings {
   id: number; // selalu 1
   theme: 'light' | 'dark' | 'system';
   shiftTolerance: number;
   biometricEnabled: boolean;
   defaultCashAccountId?: string;
+  hidePlayProtectNotice?: boolean;
 }

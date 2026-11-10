@@ -313,6 +313,7 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .form-row {
@@ -322,12 +323,16 @@ async function handleSubmit() {
 
 .flex-1 {
   flex: 1;
+  min-width: 0;
 }
 
 .form-label {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-main);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .type-toggle {
@@ -449,5 +454,12 @@ async function handleSubmit() {
 .btn-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (max-width: 380px) {
+  .form-row {
+    flex-direction: column;
+    gap: 12px;
+  }
 }
 </style>

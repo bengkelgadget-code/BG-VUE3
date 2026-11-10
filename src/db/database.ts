@@ -14,6 +14,7 @@ import type {
   ProductCatalogEntry,
   AuditLog,
   AppSettings,
+  Brand,
 } from './types';
 
 export class BukuKonterDB extends Dexie {
@@ -31,6 +32,7 @@ export class BukuKonterDB extends Dexie {
   productCatalogCache!: Table<ProductCatalogEntry, string>;
   auditLogs!: Table<AuditLog, string>;
   appSettings!: Table<AppSettings, number>;
+  brands!: Table<Brand, string>;
 
   constructor() {
     super('buku_konter');
@@ -49,6 +51,9 @@ export class BukuKonterDB extends Dexie {
       productCatalogCache: 'id, category, isActive',
       auditLogs: 'id, actorUserId, action, entityType, entityId, createdAt',
       appSettings: 'id',
+    });
+    this.version(2).stores({
+      brands: 'id, name',
     });
   }
 }

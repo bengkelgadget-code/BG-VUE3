@@ -1,7 +1,7 @@
 {
-  "version_code": 6,
+  "version_code": 7,
   "version_name": "0.2.0",
-  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b6/buku-konter-v0.2.0-b6.apk",
-  "changelog": "Perbaiki unduhan OTA di dalam aplikasi (unduh via HTTP native, bebas CORS)",
+  "download_url": "",
+  "changelog": "Perbaiki form Tambah Produk Master (kategori di atas, brand bisa dikelola, nav tersembunyi saat input) + penjelasan Play Protect sebelum update OTA",
   "force_update": false
 }

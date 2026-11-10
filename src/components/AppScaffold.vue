@@ -14,11 +14,17 @@
       </div>
     </header>
 
-    <main class="app-main">
+    <main
+      ref="mainRef"
+      class="app-main"
+      :class="{ 'no-nav-padding': isNavHidden }"
+      @focusin="handleFocusIn"
+      @focusout="handleFocusOut"
+    >
       <slot />
     </main>
 
-    <nav v-if="!hideNav" class="bottom-nav">
+    <nav v-if="!isNavHidden" class="bottom-nav">
       <router-link to="/" class="nav-item" :class="{ active: currentRouteName === 'Home' }">
         <Home class="nav-icon" />
         <span class="nav-label">Home</span>
@@ -48,18 +54,53 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { Home, ReceiptText, Plus, Clock, Settings } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/authStore';
 
-defineProps<{
+const props = defineProps<{
   hideHeader?: boolean;
   hideNav?: boolean;
 }>();
 
 const route = useRoute();
 const authStore = useAuthStore();
+
+const mainRef = ref<HTMLElement | null>(null);
+const isInputFocused = ref(false);
+let focusTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function isInputElement(el: Element | null): boolean {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+}
+
+function handleFocusIn(e: FocusEvent) {
+  const target = e.target as HTMLElement | null;
+  if (isInputElement(target)) {
+    if (focusTimeout) {
+      clearTimeout(focusTimeout);
+      focusTimeout = null;
+    }
+    isInputFocused.value = true;
+  }
+}
+
+function handleFocusOut(_e: FocusEvent) {
+  if (focusTimeout) clearTimeout(focusTimeout);
+  focusTimeout = setTimeout(() => {
+    const active = typeof document !== 'undefined' ? document.activeElement : null;
+    if (isInputElement(active) && mainRef.value?.contains(active)) {
+      isInputFocused.value = true;
+    } else {
+      isInputFocused.value = false;
+    }
+  }, 100);
+}
+
+const isNavHidden = computed(() => Boolean(props.hideNav || isInputFocused.value));
 
 const currentRouteName = computed(() => route.name);
 
@@ -132,6 +173,10 @@ const roleLabel = computed(() => {
   max-width: 600px;
   width: 100%;
   margin: 0 auto;
+}
+
+.app-main.no-nav-padding {
+  padding-bottom: 16px;
 }
 
 .bottom-nav {

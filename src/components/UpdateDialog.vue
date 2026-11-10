@@ -20,6 +20,26 @@
         <p class="changelog-text">{{ update.changelog || 'Peningkatan performa dan perbaikan bug.' }}</p>
       </div>
 
+      <!-- Penjelasan Play Protect Sebelum Unduh (Satu Kali / Dapat Dinonaktifkan) -->
+      <div v-if="showPlayProtectNotice" class="play-protect-notice" data-testid="play-protect-notice">
+        <div class="notice-title">
+          <ShieldAlert class="notice-icon" />
+          <span>Informasi Pemasangan (Play Protect)</span>
+        </div>
+        <p class="notice-text">
+          Aplikasi ini diinstal dari luar Play Store sehingga Google Play Protect kadang menampilkan peringatan <em>"Aplikasi berbahaya diblokir"</em>. Aplikasi ini 100% aman karena dibuat dan ditandatangani oleh pemilik sendiri. Jika peringatan muncul, pilih <strong>"Detail selengkapnya"</strong> lalu <strong>"Tetap instal"</strong>.
+        </p>
+        <label class="notice-checkbox-label">
+          <input
+            v-model="dontShowAgain"
+            type="checkbox"
+            class="notice-checkbox"
+            data-testid="dont-show-again-checkbox"
+          />
+          <span>Jangan tampilkan pesan ini lagi</span>
+        </label>
+      </div>
+
       <!-- Progress Bar saat Mengunduh -->
       <div v-if="isDownloading" class="progress-section">
         <div class="progress-info">
@@ -62,9 +82,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { RefreshCw } from 'lucide-vue-next';
+import { ref, computed, onMounted } from 'vue';
+import { getActivePinia } from 'pinia';
+import { RefreshCw, ShieldAlert } from 'lucide-vue-next';
 import { updateService, type VersionInfo } from '../services/updateService';
+import { useSettingsStore } from '../stores/settingsStore';
 
 const props = defineProps<{
   update: VersionInfo;
@@ -74,9 +96,20 @@ const emit = defineEmits<{
   (e: 'dismiss'): void;
 }>();
 
+const settingsStore = getActivePinia() ? useSettingsStore() : null;
+
 const isDownloading = ref(false);
 const progress = ref(0);
 const errorMessage = ref('');
+const dontShowAgain = ref(false);
+
+const showPlayProtectNotice = computed(() => !settingsStore?.hidePlayProtectNotice);
+
+onMounted(async () => {
+  if (settingsStore) {
+    await settingsStore.loadSettings();
+  }
+});
 
 function handleBackdropClick() {
   if (!props.update.forceUpdate && !isDownloading.value) {
@@ -88,6 +121,10 @@ async function startUpdate() {
   errorMessage.value = '';
   isDownloading.value = true;
   progress.value = 0;
+
+  if (dontShowAgain.value && settingsStore) {
+    await settingsStore.setHidePlayProtectNotice(true);
+  }
 
   try {
     await updateService.downloadAndInstall(props.update, (pct) => {
@@ -212,6 +249,58 @@ async function startUpdate() {
   color: var(--text-main);
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.play-protect-notice {
+  background: var(--color-warning-subtle, #fef3c7);
+  border: 1px solid var(--color-warning, #f59e0b);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #92400e;
+}
+
+.notice-icon {
+  width: 18px;
+  height: 18px;
+  color: #b45309;
+  flex-shrink: 0;
+}
+
+.notice-text {
+  font-size: 12px;
+  color: #78350f;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.notice-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+  cursor: pointer;
+  margin-top: 4px;
+  user-select: none;
+}
+
+.notice-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
 }
 
 .progress-section {

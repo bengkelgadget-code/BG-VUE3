@@ -431,6 +431,7 @@ onMounted(async () => {
   align-items: center;
   margin-bottom: 12px;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .header-left {

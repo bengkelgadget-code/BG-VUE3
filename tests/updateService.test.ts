@@ -501,9 +501,9 @@ describe('UpdateService (OTA GitHub Pattern Setel)', () => {
       return globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     }
 
-    it('fallback web = 6 dan version.json version_code = 6 (naik bareng)', () => {
-      expect(DEFAULT_WEB_FALLBACK_VERSION_CODE).toBe(6);
-      expect(versionData.version_code).toBe(6);
+    it('fallback web = 7 dan version.json version_code = 7 (naik bareng)', () => {
+      expect(DEFAULT_WEB_FALLBACK_VERSION_CODE).toBe(7);
+      expect(versionData.version_code).toBe(7);
     });
 
     it('native: unduh via CapacitorHttp (bukan fetch langsung service), progress berakhir 100', async () => {
