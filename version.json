@@ -2,7 +2,7 @@
   "version_code": 8,
   "version_name": "0.2.0",
   "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b8/buku-konter-v0.2.0-b8.apk",
-  "bundle_version": "",
+  "bundle_version": "1794294153052",
   "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b8/update.zip",
   "min_apk_version_code": 8,
   "changelog": "Update OTA pindah ke Capgo live update seperti app Server Pulsa (tanpa instal ulang APK)",
