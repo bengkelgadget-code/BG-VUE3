@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { mount, flushPromises } from '@vue/test-utils';
 import { db } from '../src/db/database';
@@ -22,6 +22,17 @@ describe('b7: Brand Service, Form Tambah Produk Master & Play Protect Notice', (
     await db.appSettings.clear();
     await db.users.clear();
     vi.restoreAllMocks();
+  });
+
+  // Drain navigasi router yang masih berjalan sebelum jsdom di-teardown.
+  // Guard router bersifat async (baca IndexedDB via authService); bila
+  // navigasi selesai SETELAH teardown, vue-router melempar unhandled
+  // rejection "history is not defined" dan Vitest exit 1 — inilah yang
+  // menggagalkan run CI b8 #20 padahal 120/120 tes lolos.
+  afterEach(async () => {
+    await flushPromises();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flushPromises();
   });
 
   describe('1. BrandService (CRUD & Validasi Brand)', () => {

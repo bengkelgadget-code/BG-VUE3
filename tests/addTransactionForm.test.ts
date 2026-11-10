@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { mount, flushPromises } from '@vue/test-utils';
 import { db } from '../src/db/database';
@@ -83,6 +83,17 @@ describe('AddTransactionView Form Improvements (b4)', () => {
       kasAwalFisik: 1000000,
       status: 'open',
     });
+  });
+
+  // Drain navigasi router yang masih berjalan sebelum jsdom di-teardown.
+  // Guard router bersifat async (baca IndexedDB via authService); bila
+  // navigasi selesai SETELAH teardown, vue-router melempar unhandled
+  // rejection "history is not defined" dan Vitest exit 1 — inilah yang
+  // menggagalkan run CI b8 #20 padahal 120/120 tes lolos.
+  afterEach(async () => {
+    await flushPromises();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flushPromises();
   });
 
   it('Poin 1: Dropdown Jenis Layanan bisa dicari / difilter, mendukung keyboard navigation', async () => {
