@@ -3,15 +3,15 @@
     <div class="update-modal-card" @click.stop>
       <div class="update-header">
         <div class="icon-wrap">
-          <RefreshCw class="update-icon" :class="{ spinning: isDownloading }" />
+          <RefreshCw class="update-icon" :class="{ spinning: isWorking }" />
         </div>
         <div class="title-wrap">
-          <h3 class="modal-title">Pembaruan Tersedia</h3>
+          <h3 class="modal-title">{{ isApk ? 'Pembaruan APK Baru Diperlukan' : 'Pembaruan Tersedia' }}</h3>
           <span class="version-tag">Versi {{ update.versionName }} (Build {{ update.versionCode }})</span>
         </div>
       </div>
 
-      <div v-if="update.forceUpdate" class="force-update-badge">
+      <div v-if="forceUpdate" class="force-update-badge">
         ⚠️ Pembaruan Kritis: Anda wajib memperbarui aplikasi untuk melanjutkan penggunaan.
       </div>
 
@@ -20,8 +20,9 @@
         <p class="changelog-text">{{ update.changelog || 'Peningkatan performa dan perbaikan bug.' }}</p>
       </div>
 
-      <!-- Penjelasan Play Protect Sebelum Unduh (Satu Kali / Dapat Dinonaktifkan) -->
-      <div v-if="showPlayProtectNotice" class="play-protect-notice" data-testid="play-protect-notice">
+      <!-- Penjelasan Play Protect — HANYA untuk unduh APK (installer sistem masih dipakai).
+           Update bundle (Capgo) tidak memicu Play Protect, jadi notice tidak ditampilkan. -->
+      <div v-if="isApk && showPlayProtectNotice" class="play-protect-notice" data-testid="play-protect-notice">
         <div class="notice-title">
           <ShieldAlert class="notice-icon" />
           <span>Informasi Pemasangan (Play Protect)</span>
@@ -40,14 +41,10 @@
         </label>
       </div>
 
-      <!-- Progress Bar saat Mengunduh -->
-      <div v-if="isDownloading" class="progress-section">
+      <!-- Status saat memproses pembaruan bundle (Capgo tidak memberi progres %) -->
+      <div v-if="isWorking && !isApk" class="progress-section">
         <div class="progress-info">
-          <span>Mengunduh berkas APK...</span>
-          <span class="pct-val font-bold">{{ progress }}%</span>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill" :style="{ width: `${progress}%` }"></div>
+          <span>Mengunduh &amp; memuat pembaruan...</span>
         </div>
       </div>
 
@@ -59,7 +56,7 @@
       <!-- Tombol Aksi -->
       <div class="modal-actions">
         <button
-          v-if="!update.forceUpdate && !isDownloading"
+          v-if="!forceUpdate && !isWorking"
           type="button"
           class="btn-dismiss"
           @click="$emit('dismiss')"
@@ -70,11 +67,11 @@
         <button
           type="button"
           class="btn-update-action"
-          :disabled="isDownloading"
+          :disabled="isWorking"
           @click="startUpdate"
         >
-          <span v-if="!isDownloading">Update Sekarang</span>
-          <span v-else>Memasang APK... ({{ progress }}%)</span>
+          <span v-if="!isWorking">{{ isApk ? 'Unduh APK Baru' : 'Update Sekarang' }}</span>
+          <span v-else>{{ isApk ? 'Membuka browser...' : 'Memuat pembaruan...' }}</span>
         </button>
       </div>
     </div>
@@ -85,11 +82,16 @@
 import { ref, computed, onMounted } from 'vue';
 import { getActivePinia } from 'pinia';
 import { RefreshCw, ShieldAlert } from 'lucide-vue-next';
-import { updateService, type VersionInfo } from '../services/updateService';
+import { Browser } from '@capacitor/browser';
+import {
+  liveUpdateService,
+  type BundleUpdate,
+  type ApkUpdate,
+} from '../services/liveUpdateService';
 import { useSettingsStore } from '../stores/settingsStore';
 
 const props = defineProps<{
-  update: VersionInfo;
+  update: BundleUpdate | ApkUpdate;
 }>();
 
 const emit = defineEmits<{
@@ -98,11 +100,14 @@ const emit = defineEmits<{
 
 const settingsStore = getActivePinia() ? useSettingsStore() : null;
 
-const isDownloading = ref(false);
-const progress = ref(0);
+const isWorking = ref(false);
 const errorMessage = ref('');
 const dontShowAgain = ref(false);
 
+const isApk = computed(() => props.update.kind === 'apk');
+const forceUpdate = computed(
+  () => props.update.kind === 'apk' && props.update.forceUpdate
+);
 const showPlayProtectNotice = computed(() => !settingsStore?.hidePlayProtectNotice);
 
 onMounted(async () => {
@@ -112,32 +117,41 @@ onMounted(async () => {
 });
 
 function handleBackdropClick() {
-  if (!props.update.forceUpdate && !isDownloading.value) {
+  if (forceUpdate.value) return;
+  if (!isWorking.value) {
     emit('dismiss');
   }
 }
 
 async function startUpdate() {
   errorMessage.value = '';
-  isDownloading.value = true;
-  progress.value = 0;
+  isWorking.value = true;
 
-  if (dontShowAgain.value && settingsStore) {
+  // Simpan pilihan "jangan tampilkan lagi" DULU sebelum membuka browser / menerapkan
+  // bundle, supaya pilihan user tidak hilang bila langkah berikutnya gagal.
+  if (isApk.value && dontShowAgain.value && settingsStore) {
     await settingsStore.setHidePlayProtectNotice(true);
   }
 
   try {
-    await updateService.downloadAndInstall(props.update, (pct) => {
-      progress.value = pct;
-    });
+    if (props.update.kind === 'bundle') {
+      // set() di dalam applyBundleUpdate langsung me-refresh webview bila sukses,
+      // sehingga kode setelah baris ini tidak berjalan.
+      await liveUpdateService.applyBundleUpdate(props.update);
+    } else {
+      // APK baru (perubahan native): buka link unduhan di browser sistem.
+      // TIDAK instal dari dalam aplikasi lagi — tidak ada ApkInstaller.
+      await Browser.open({ url: props.update.downloadUrl });
+      emit('dismiss');
+    }
   } catch (err: unknown) {
     if (err instanceof Error) {
       errorMessage.value = err.message;
     } else {
-      errorMessage.value = 'Gagal mengunduh atau memasang pembaruan.';
+      errorMessage.value = 'Gagal memproses pembaruan.';
     }
   } finally {
-    isDownloading.value = false;
+    isWorking.value = false;
   }
 }
 </script>
@@ -314,21 +328,6 @@ async function startUpdate() {
   justify-content: space-between;
   font-size: 12px;
   color: var(--text-secondary);
-}
-
-.progress-track {
-  width: 100%;
-  height: 8px;
-  background: var(--border-color);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--color-primary);
-  border-radius: 999px;
-  transition: width 0.2s ease;
 }
 
 .error-banner {
