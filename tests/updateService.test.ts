@@ -2,8 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { UpdateService, updateService as defaultUpdateService } from '../src/services/updateService';
+import {
+  UpdateService,
+  updateService as defaultUpdateService,
+  DEFAULT_WEB_FALLBACK_VERSION_CODE,
+} from '../src/services/updateService';
 import UpdateDialog from '../src/components/UpdateDialog.vue';
+import versionData from '../version.json';
 
 vi.mock('@capacitor/app', () => ({
   App: {
@@ -330,6 +335,114 @@ describe('UpdateService (OTA GitHub Pattern Setel)', () => {
 
       expect(App.getInfo).toHaveBeenCalled();
       expect(setCodeSpy).toHaveBeenCalledWith(3);
+    });
+  });
+
+  describe('b6: Unduhan native via CapacitorHttp + validasi ukuran', () => {
+    const apkVersion = {
+      versionCode: 6,
+      versionName: '0.2.0',
+      downloadUrl: 'https://example.com/app.apk',
+      changelog: 'Perbaikan OTA b6',
+      forceUpdate: false,
+    };
+
+    // Di jsdom, CapacitorHttp.get berjalan lewat implementasi web-nya yang
+    // memanggil globalThis.fetch — jadi jalur native diuji lewat fetch mock
+    // berupa Response sungguhan. Implementasi web mengembalikan data
+    // arraybuffer sebagai string base64 (sama seperti plugin native),
+    // sehingga jalur toUint8Array(base64) ikut teruji.
+    function mockFetchApk(bytes: Uint8Array, contentLength: string | null, status = 200) {
+      const headers: Record<string, string> = {
+        'content-type': 'application/vnd.android.package-archive',
+      };
+      if (contentLength !== null) headers['content-length'] = contentLength;
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(bytes as unknown as BodyInit, { status, headers })
+      ) as unknown as typeof fetch;
+      return globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    }
+
+    it('fallback web = 6 dan version.json version_code = 6 (naik bareng)', () => {
+      expect(DEFAULT_WEB_FALLBACK_VERSION_CODE).toBe(6);
+      expect(versionData.version_code).toBe(6);
+    });
+
+    it('native: unduh via CapacitorHttp (bukan fetch langsung service), progress berakhir 100', async () => {
+      const fakeData = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      const fetchMock = mockFetchApk(fakeData, '4');
+
+      const progressList: number[] = [];
+      const bytes = await updateService.downloadApk(apkVersion, (pct) => {
+        progressList.push(pct);
+      });
+
+      // CapacitorHttp web memanggil fetch dengan requestInit (method GET);
+      // jalur fetch langsung service memanggil fetch(url) tanpa init.
+      expect(fetchMock).toHaveBeenCalledWith(
+        apkVersion.downloadUrl,
+        expect.objectContaining({ method: 'GET' })
+      );
+      expect(bytes).toEqual(fakeData);
+      expect(progressList[progressList.length - 1]).toBe(100);
+    });
+
+    it('native: HTTP non-2xx ditolak dengan pesan jelas', async () => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      mockFetchApk(new Uint8Array([]), null, 404);
+
+      await expect(updateService.downloadApk(apkVersion, () => {})).rejects.toThrow('HTTP 404');
+    });
+
+    it('native: ukuran diterima != content-length ditolak (file tidak lengkap)', async () => {
+      const fakeData = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      mockFetchApk(fakeData, '10');
+
+      await expect(updateService.downloadApk(apkVersion, () => {})).rejects.toThrow(
+        /tidak lengkap/
+      );
+    });
+
+    it('native: tanpa content-length, file di bawah batas minimum ditolak', async () => {
+      const fakeData = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      mockFetchApk(fakeData, null);
+
+      await expect(updateService.downloadApk(apkVersion, () => {})).rejects.toThrow(
+        /tidak lengkap/
+      );
+    });
+
+    it('web: unduhan terpotong (content-length tidak cocok) menggagalkan downloadAndInstall', async () => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+      const fakeData = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (h: string) => (h === 'content-length' ? '10' : null),
+        },
+        body: {
+          getReader: () => {
+            let read = false;
+            return {
+              read: async () => {
+                if (!read) {
+                  read = true;
+                  return { done: false, value: fakeData };
+                }
+                return { done: true, value: undefined };
+              },
+            };
+          },
+        },
+      } as unknown as Response);
+
+      await expect(updateService.downloadAndInstall(apkVersion, () => {})).rejects.toThrow(
+        /tidak lengkap/
+      );
     });
   });
 });
