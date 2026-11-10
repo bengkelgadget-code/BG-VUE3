@@ -1,4 +1,4 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor, CapacitorHttp, registerPlugin } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { App } from '@capacitor/app';
 
@@ -17,7 +17,12 @@ interface ApkInstallerPlugin {
 const ApkInstaller = registerPlugin<ApkInstallerPlugin>('ApkInstaller');
 
 // Fallback jika di lingkungan web/dev tanpa platform native
-export const DEFAULT_WEB_FALLBACK_VERSION_CODE = 5;
+export const DEFAULT_WEB_FALLBACK_VERSION_CODE = 6;
+
+// Batas bawah kewajaran ukuran APK (b6 ~5,4 MB). Dipakai hanya bila server
+// tidak mengirim header content-length, untuk menolak halaman error HTML
+// (biasanya puluhan KB) yang tersamar sebagai APK.
+export const MIN_APK_BYTES = 1_000_000;
 
 export class UpdateService {
   private currentVersionCode: number = DEFAULT_WEB_FALLBACK_VERSION_CODE;
@@ -105,16 +110,88 @@ export class UpdateService {
   }
 
   /**
-   * Unduh update APK sungguhan dan luncurkan installer native Android via Capacitor
+   * Validasi ukuran hasil unduhan. File yang tidak lengkap DITOLAK dengan
+   * pesan jelas — jangan pernah lanjut ke instalasi.
    */
-  public async downloadAndInstall(
+  private validateDownloadSize(receivedBytes: number, expectedBytes: number): void {
+    if (expectedBytes > 0 && receivedBytes !== expectedBytes) {
+      throw new Error(
+        `Unduhan APK tidak lengkap: diterima ${receivedBytes} dari ${expectedBytes} byte. ` +
+          'File dibuang, instalasi dibatalkan — coba lagi saat koneksi stabil.'
+      );
+    }
+    if (expectedBytes <= 0 && receivedBytes < MIN_APK_BYTES) {
+      throw new Error(
+        `Unduhan APK tidak lengkap atau mencurigakan: hanya ${receivedBytes} byte ` +
+          `(ukuran APK normal di atas ${MIN_APK_BYTES} byte). ` +
+          'File dibuang, instalasi dibatalkan.'
+      );
+    }
+  }
+
+  /**
+   * Ambil header content-length tanpa peduli kapitalisasi kunci header.
+   */
+  private getContentLength(headers: Record<string, string | string[] | undefined>): number {
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() === 'content-length') {
+        const raw = Array.isArray(value) ? value[0] : value;
+        return Number(raw) || 0;
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Normalisasi data biner dari CapacitorHttp. Di platform native data
+   * bertipe ArrayBuffer; di sebagian versi Capacitor bisa berupa string
+   * base64 — keduanya diterima.
+   */
+  private toUint8Array(data: unknown): Uint8Array {
+    if (data instanceof Uint8Array) return data;
+    if (data instanceof ArrayBuffer) return new Uint8Array(data);
+    if (Array.isArray(data)) return new Uint8Array(data as number[]);
+    if (typeof data === 'string') {
+      const binary = atob(data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    }
+    throw new Error('Format data unduhan APK tidak dikenali.');
+  }
+
+  /**
+   * Unduh APK dan kembalikan byte-nya (tanpa menyimpan / menginstal).
+   *
+   * b6: di platform native unduhan WAJIB lewat CapacitorHttp (HTTP native
+   * Android, tidak kena CORS). fetch() di WebView diblokir host release
+   * GitHub ("Failed to fetch") sehingga update b5 tidak pernah terunduh.
+   * Jalur fetch hanya dipertahankan untuk web/dev, dengan validasi ukuran
+   * yang sama.
+   */
+  public async downloadApk(
     version: VersionInfo,
     onProgress: (pct: number) => void
-  ): Promise<void> {
-    onProgress(0);
-
+  ): Promise<Uint8Array> {
     if (!version.downloadUrl) {
       throw new Error('URL unduhan APK tidak valid.');
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      // HTTP native mengikuti redirect 302 GitHub Release -> object storage.
+      const res = await CapacitorHttp.get({
+        url: version.downloadUrl,
+        responseType: 'arraybuffer',
+      });
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`Gagal mengunduh file APK: HTTP ${res.status}`);
+      }
+      const bytes = this.toUint8Array(res.data);
+      this.validateDownloadSize(bytes.length, this.getContentLength(res.headers ?? {}));
+      onProgress(100);
+      return bytes;
     }
 
     const res = await fetch(version.downloadUrl);
@@ -148,8 +225,6 @@ export class UpdateService {
       onProgress(100);
     }
 
-    onProgress(100);
-
     const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
     const combined = new Uint8Array(totalLen);
     let offset = 0;
@@ -157,6 +232,23 @@ export class UpdateService {
       combined.set(chunk, offset);
       offset += chunk.length;
     }
+
+    this.validateDownloadSize(combined.length, contentLength);
+    onProgress(100);
+    return combined;
+  }
+
+  /**
+   * Unduh update APK sungguhan dan luncurkan installer native Android via Capacitor
+   */
+  public async downloadAndInstall(
+    version: VersionInfo,
+    onProgress: (pct: number) => void
+  ): Promise<void> {
+    onProgress(0);
+
+    // Melempar di sini = instalasi tidak dilanjutkan (file tidak lengkap).
+    const combined = await this.downloadApk(version, onProgress);
 
     // Simpan file APK ke cache filesystem
     let binary = '';
