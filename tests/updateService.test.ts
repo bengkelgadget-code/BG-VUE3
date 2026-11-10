@@ -490,9 +490,14 @@ describe('UpdateService (OTA GitHub Pattern Setel)', () => {
         'content-type': 'application/vnd.android.package-archive',
       };
       if (contentLength !== null) headers['content-length'] = contentLength;
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        new Response(bytes as unknown as BodyInit, { status, headers })
-      ) as unknown as typeof fetch;
+      const response = new Response(bytes as unknown as BodyInit, { status, headers });
+      // CapacitorHttp web impl membaca body lewat response.blob() lalu
+      // FileReader.readAsDataURL — FileReader jsdom hanya menerima Blob jsdom,
+      // sementara Response bawaan Node 20 mengembalikan Blob undici (di CI ini
+      // melempar TypeError "parameter 1 is not of type 'Blob'"). Paksa blob()
+      // mengembalikan Blob jsdom agar berlaku di Node 20 maupun 24.
+      response.blob = async () => new Blob([bytes]);
+      globalThis.fetch = vi.fn().mockResolvedValue(response) as unknown as typeof fetch;
       return globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     }
 
