@@ -122,7 +122,7 @@
         </div>
       </div>
 
-      <!-- Section Sinkronisasi Supabase (Owner/Admin Saja) (b9) -->
+      <!-- Section Sinkronisasi Supabase (Owner/Admin Saja) (b9/b14) -->
       <div v-if="authStore.isAdmin" class="settings-card">
         <h3 class="card-title">Sinkronisasi Supabase</h3>
         <p class="section-desc">Data tersimpan di database Supabase supaya aman walau aplikasi di-install ulang.</p>
@@ -130,34 +130,6 @@
         <div class="sync-status-box" data-testid="sync-status">
           {{ syncStatusText }}
         </div>
-
-        <div v-if="!isEnvConfigured" class="sync-credentials-form">
-          <input
-            v-model="supabaseUrlInput"
-            type="text"
-            placeholder="URL Supabase (https://xyz.supabase.co)"
-            class="sync-input"
-            data-testid="sync-supabase-url"
-          />
-          <input
-            v-model="supabaseKeyInput"
-            type="password"
-            placeholder="Anon Key Supabase"
-            class="sync-input"
-            data-testid="sync-supabase-key"
-          />
-          <button
-            type="button"
-            class="btn-primary-sm"
-            data-testid="sync-save-credentials"
-            @click="saveSupabaseCredentials"
-          >
-            Simpan Kredensial
-          </button>
-        </div>
-        <p v-else class="section-desc" style="margin-bottom: 12px; font-style: italic;">
-          Kredensial dari konfigurasi aplikasi.
-        </p>
 
         <div class="action-buttons-list">
           <button
@@ -313,8 +285,11 @@ async function handleCheckUpdate() {
     } else {
       showSuccess(`Aplikasi sudah versi terbaru (v${APP_VERSION}).`);
     }
-  } catch {
-    if (isChecking) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('Proses pembaruan sedang berjalan')) {
+      showSuccess('Pembaruan sedang diproses...');
+    } else if (isChecking) {
       showError('Gagal memeriksa pembaruan. Pastikan perangkat terhubung ke internet.');
     } else {
       showError('Gagal mengunduh pembaruan. Coba lagi.');
@@ -446,29 +421,14 @@ async function handleFileRestore(e: Event) {
 const isSyncing = ref(false);
 const lastSyncTime = ref<number | null>(null);
 
-const isEnvConfigured = computed(() => {
-  return Boolean(
-    typeof import.meta !== 'undefined' &&
-    import.meta.env?.VITE_SUPABASE_URL &&
-    import.meta.env?.VITE_SUPABASE_ANON_KEY
-  );
-});
-
-const supabaseUrlInput = ref(
-  typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_url') || '' : ''
-);
-const supabaseKeyInput = ref(
-  typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_key') || '' : ''
-);
-
 const syncStatusText = computed(() => {
   if (!supabaseSyncService.isConfigured()) {
-    return 'Belum terhubung ke Supabase.';
+    return 'Belum terhubung ke database Server Pulsa.';
   }
   if (!lastSyncTime.value) {
-    return 'Terhubung. Sinkron terakhir: belum pernah';
+    return 'Terhubung ke database Server Pulsa. Sinkron terakhir: belum pernah';
   }
-  return `Terhubung. Sinkron terakhir: ${formatTanggalWita(lastSyncTime.value)}`;
+  return `Terhubung ke database Server Pulsa. Sinkron terakhir: ${formatTanggalWita(lastSyncTime.value)}`;
 });
 
 onMounted(async () => {
@@ -478,19 +438,6 @@ onMounted(async () => {
     if (val) lastSyncTime.value = Number(val);
   }
 });
-
-function saveSupabaseCredentials() {
-  const url = supabaseUrlInput.value.trim();
-  const key = supabaseKeyInput.value.trim();
-  if (!url || !key) {
-    showError('URL dan Kunci Anon Supabase wajib diisi.');
-    return;
-  }
-  localStorage.setItem('supabase_catalog_url', url);
-  localStorage.setItem('supabase_catalog_key', key);
-  supabaseSyncService.setCustomClient(null);
-  showSuccess('Kredensial Supabase berhasil disimpan.');
-}
 
 async function handleSyncNow() {
   isSyncing.value = true;
@@ -841,27 +788,6 @@ async function handleToggleAutoSync(e: Event) {
   margin-bottom: 12px;
   color: var(--text-main);
   line-height: 1.4;
-}
-
-.sync-credentials-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.sync-input {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-canvas);
-  color: var(--text-main);
-  font-size: 13px;
-}
-
-.sync-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
 }
 
 .sync-auto-toggle-row {

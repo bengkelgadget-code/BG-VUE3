@@ -2,7 +2,6 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { db } from '../src/db/database';
 import { supabaseSyncService, SYNC_TABLES } from '../src/services/supabaseSyncService';
-import { AppError } from '../src/core/errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Transaction } from '../src/db/types';
 
@@ -22,7 +21,7 @@ describe('SupabaseSyncService (b9 & b10: Koneksi Data ke Supabase)', () => {
   });
 
   describe('1. isConfigured & Resolusi Kredensial', () => {
-    it('mengembalikan false bila kredensial kosong, dan true bila diisi di localStorage', () => {
+    it('memakai kredensial built-in saat env kosong dan mengabaikan localStorage', () => {
       // Mock import.meta.env kosong
       const originalUrl = import.meta.env.VITE_SUPABASE_URL;
       const originalKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -30,12 +29,12 @@ describe('SupabaseSyncService (b9 & b10: Koneksi Data ke Supabase)', () => {
       delete envRecord.VITE_SUPABASE_URL;
       delete envRecord.VITE_SUPABASE_ANON_KEY;
 
-      expect(supabaseSyncService.isConfigured()).toBe(false);
+      // isConfigured selalu true karena memakai kredensial built-in Server Pulsa
+      expect(supabaseSyncService.isConfigured()).toBe(true);
 
-      localStorage.setItem('supabase_catalog_url', 'https://xyz.supabase.co');
-      expect(supabaseSyncService.isConfigured()).toBe(false); // key masih kosong
-
-      localStorage.setItem('supabase_catalog_key', 'anon-key-123');
+      // Pastikan localStorage tidak dibaca/berpengaruh lagi
+      localStorage.setItem('supabase_catalog_url', 'https://ignore.me');
+      localStorage.setItem('supabase_catalog_key', 'ignore-key');
       expect(supabaseSyncService.isConfigured()).toBe(true);
 
       // Restore
@@ -43,20 +42,21 @@ describe('SupabaseSyncService (b9 & b10: Koneksi Data ke Supabase)', () => {
       if (originalKey) envRecord.VITE_SUPABASE_ANON_KEY = originalKey;
     });
 
-    it('pushAll & pullAll melempar AppError bila kredensial belum dikonfigurasi', async () => {
+    it('memakai kredensial env saat tersedia untuk override built-in', () => {
+      const originalUrl = import.meta.env.VITE_SUPABASE_URL;
+      const originalKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const envRecord = import.meta.env as unknown as Record<string, string | undefined>;
-      delete envRecord.VITE_SUPABASE_URL;
-      delete envRecord.VITE_SUPABASE_ANON_KEY;
 
-      await expect(supabaseSyncService.pushAll()).rejects.toThrow(AppError);
-      await expect(supabaseSyncService.pushAll()).rejects.toThrow(
-        /Kredensial Supabase belum dikonfigurasi/
-      );
+      envRecord.VITE_SUPABASE_URL = 'https://custom.supabase.co';
+      envRecord.VITE_SUPABASE_ANON_KEY = 'custom-anon-key';
 
-      await expect(supabaseSyncService.pullAll()).rejects.toThrow(AppError);
-      await expect(supabaseSyncService.pullAll()).rejects.toThrow(
-        /Kredensial Supabase belum dikonfigurasi/
-      );
+      expect(supabaseSyncService.isConfigured()).toBe(true);
+
+      // Restore
+      if (originalUrl) envRecord.VITE_SUPABASE_URL = originalUrl;
+      else delete envRecord.VITE_SUPABASE_URL;
+      if (originalKey) envRecord.VITE_SUPABASE_ANON_KEY = originalKey;
+      else delete envRecord.VITE_SUPABASE_ANON_KEY;
     });
   });
 

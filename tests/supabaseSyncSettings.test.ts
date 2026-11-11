@@ -56,11 +56,7 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
       expect(wrapper.find('[data-testid="sync-status"]').exists()).toBe(false);
     });
 
-    it('menampilkan field input kredensial bila env kosong, dan menyimpannya saat tombol diklik', async () => {
-      const envRecord = import.meta.env as unknown as Record<string, string | undefined>;
-      delete envRecord.VITE_SUPABASE_URL;
-      delete envRecord.VITE_SUPABASE_ANON_KEY;
-
+    it('(b) field kredensial TIDAK ADA SAMA SEKALI dan tidak ada tombol simpan kredensial', async () => {
       const authStore = useAuthStore();
       authStore.currentUser = {
         id: 'admin-1',
@@ -76,26 +72,28 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
       });
       await flushPromises();
 
-      const urlInput = wrapper.find('[data-testid="sync-supabase-url"]');
-      const keyInput = wrapper.find('[data-testid="sync-supabase-key"]');
-      const saveBtn = wrapper.find('[data-testid="sync-save-credentials"]');
+      // Field input URL, Key, dan tombol simpan kini TIDAK ADA sama sekali
+      expect(wrapper.find('[data-testid="sync-supabase-url"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="sync-supabase-key"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="sync-save-credentials"]').exists()).toBe(false);
 
-      expect(urlInput.exists()).toBe(true);
-      expect(keyInput.exists()).toBe(true);
-
-      await urlInput.setValue('https://myproject.supabase.co');
-      await keyInput.setValue('my-secret-anon-key');
-      await saveBtn.trigger('click');
-      await flushPromises();
-
-      expect(localStorage.getItem('supabase_catalog_url')).toBe('https://myproject.supabase.co');
-      expect(localStorage.getItem('supabase_catalog_key')).toBe('my-secret-anon-key');
+      // Status dan tombol aksi sinkronisasi tetap ada lengkap
+      expect(wrapper.find('[data-testid="sync-status"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="sync-status"]').text()).toContain('database Server Pulsa');
+      expect(wrapper.find('[data-testid="sync-now"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="sync-pull"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="sync-test-connection"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="sync-auto-toggle"]').exists()).toBe(true);
     });
 
-    it('(c) field kredensial TERSEMBUNYI bila env sudah terisi', async () => {
+    it('(c) sync service memakai kredensial built-in saat env kosong dan kartu tetap lengkap tanpa input kredensial', async () => {
       const envRecord = import.meta.env as unknown as Record<string, string | undefined>;
-      envRecord.VITE_SUPABASE_URL = 'https://env.supabase.co';
-      envRecord.VITE_SUPABASE_ANON_KEY = 'env-anon-key';
+      const originalUrl = envRecord.VITE_SUPABASE_URL;
+      const originalKey = envRecord.VITE_SUPABASE_ANON_KEY;
+      delete envRecord.VITE_SUPABASE_URL;
+      delete envRecord.VITE_SUPABASE_ANON_KEY;
+
+      expect(supabaseSyncService.isConfigured()).toBe(true);
 
       const authStore = useAuthStore();
       authStore.currentUser = {
@@ -114,10 +112,10 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
 
       expect(wrapper.find('[data-testid="sync-supabase-url"]').exists()).toBe(false);
       expect(wrapper.find('[data-testid="sync-supabase-key"]').exists()).toBe(false);
-      expect(wrapper.text()).toContain('Kredensial dari konfigurasi aplikasi.');
+      expect(wrapper.text()).not.toContain('Kredensial dari konfigurasi aplikasi.');
 
-      delete envRecord.VITE_SUPABASE_URL;
-      delete envRecord.VITE_SUPABASE_ANON_KEY;
+      if (originalUrl) envRecord.VITE_SUPABASE_URL = originalUrl;
+      if (originalKey) envRecord.VITE_SUPABASE_ANON_KEY = originalKey;
     });
 
     it('tombol "Sinkronkan Sekarang" memanggil pushAll()', async () => {
@@ -308,6 +306,46 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
       expect(success.exists()).toBe(true);
       expect(success.text()).toContain('Pembaruan sedang diproses');
       expect(success.text()).not.toContain('Aplikasi sudah versi terbaru');
+    });
+
+    it('(c2) Cek manual saat downloadBundle melempar error "Proses pembaruan sedang berjalan" -> pesan "Pembaruan sedang diproses..."', async () => {
+      const authStore = useAuthStore();
+      authStore.currentUser = {
+        id: 'owner-1',
+        name: 'Owner',
+        role: 'owner',
+        pinHash: 'h',
+        isActive: true,
+        createdAt: Date.now(),
+      };
+
+      vi.spyOn(liveUpdateService, 'checkForUpdate').mockResolvedValue({
+        kind: 'bundle',
+        bundleVersion: '124',
+        bundleUrl: 'https://example.com/update.zip',
+        versionName: '0.2.0',
+        versionCode: 14,
+        changelog: 'Test update collision',
+      });
+      vi.spyOn(liveUpdateService, 'downloadBundle').mockRejectedValue(
+        new Error('Proses pembaruan sedang berjalan.')
+      );
+
+      const wrapper = mount(SettingsView, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+
+      const checkBtn = wrapper.find('.btn-check-update');
+      await checkBtn.trigger('click');
+      await flushPromises();
+
+      const err = wrapper.find('.feedback-banner.error');
+      expect(err.exists()).toBe(false);
+
+      const success = wrapper.find('.feedback-banner.success');
+      expect(success.exists()).toBe(true);
+      expect(success.text()).toContain('Pembaruan sedang diproses...');
     });
   });
 

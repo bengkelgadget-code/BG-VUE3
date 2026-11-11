@@ -4,6 +4,7 @@ import { db } from '../db/database';
 import type { ProductCatalogEntry } from '../db/types';
 import { AppError } from '../core/errors';
 import { authService } from './authService';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabase';
 
 export class CatalogService {
   private client: SupabaseClient | null = null;
@@ -14,13 +15,11 @@ export class CatalogService {
 
     const url =
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_url') : '') ||
-      '';
+      SUPABASE_URL;
 
     const key =
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_key') : '') ||
-      '';
+      SUPABASE_ANON_KEY;
 
     if (!url || !key) {
       throw new AppError(
@@ -54,9 +53,11 @@ export class CatalogService {
     const client = await this.getClient();
 
     // STRICT: SELECT SAJA — tidak pernah memanggil insert/update/delete/upsert ke Supabase
+    // Mengambil kolom asli Server Pulsa dan hanya produk aktif (is_active = true)
     const { data, error } = await client
       .from('products')
-      .select('id, name, category, operator, denomination');
+      .select('sku_code, product_name, category, brand')
+      .eq('is_active', true);
 
     if (error || !Array.isArray(data)) {
       throw new AppError(`Gagal membaca katalog Supabase: ${error?.message || 'Data tidak valid'}`);
@@ -70,16 +71,20 @@ export class CatalogService {
     const remoteIds = new Set<string>();
 
     for (const item of data) {
-      const itemId = String(item.id);
+      const itemId = String(item.sku_code);
       remoteIds.add(itemId);
       const existing = await db.productCatalogCache.get(itemId);
 
+      // Catatan: Tabel products Server Pulsa tidak memiliki kolom denominasi;
+      // denomination diisi '' (string kosong).
+      // DILARANG KERAS mengambil harga_modal/harga_jual dari Server Pulsa;
+      // modal & harga jual produk diatur manual oleh Owner/Admin di master lokal Buku Konter.
       const entry: ProductCatalogEntry = {
         id: itemId,
-        name: String(item.name || ''),
+        name: String(item.product_name || ''),
         category: (item.category as 'pulsa' | 'data' | 'token_pln' | 'lainnya') || 'lainnya',
-        operator: item.operator ? String(item.operator) : undefined,
-        denomination: item.denomination ? String(item.denomination) : undefined,
+        operator: item.brand ? String(item.brand) : undefined,
+        denomination: '',
         isActive: true,
         updatedAt: now,
       };

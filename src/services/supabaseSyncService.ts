@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { db } from '../db/database';
 import { AppError } from '../core/errors';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabase';
 
 export const SYNC_TABLES = [
   'users',
@@ -24,17 +25,23 @@ export type SyncTableName = (typeof SYNC_TABLES)[number];
 export class SupabaseSyncService {
   private client: SupabaseClient | null = null;
 
-  public isConfigured(): boolean {
-    const url =
+  private getUrl(): string {
+    return (
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_url') : '') ||
-      '';
+      SUPABASE_URL
+    );
+  }
 
-    const key =
+  private getKey(): string {
+    return (
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_key') : '') ||
-      '';
+      SUPABASE_ANON_KEY
+    );
+  }
 
+  public isConfigured(): boolean {
+    const url = this.getUrl();
+    const key = this.getKey();
     return Boolean(url && key);
   }
 
@@ -45,20 +52,11 @@ export class SupabaseSyncService {
   private async getClient(): Promise<SupabaseClient> {
     if (this.client) return this.client;
 
-    const url =
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_url') : '') ||
-      '';
-
-    const key =
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_catalog_key') : '') ||
-      '';
+    const url = this.getUrl();
+    const key = this.getKey();
 
     if (!url || !key) {
-      throw new AppError(
-        'Kredensial Supabase belum dikonfigurasi. Isi URL dan kunci di Pengaturan → Sinkronisasi Supabase.'
-      );
+      throw new AppError('Kredensial Supabase belum dikonfigurasi.');
     }
 
     this.client = createClient(url, key, {

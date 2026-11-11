@@ -144,7 +144,7 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
     await expect(service.checkForUpdate()).rejects.toThrow('HTTP 500');
   });
 
-  it('applyBundleUpdate sukses → download + simpan versi + set terpanggil', async () => {
+  it('downloadBundle + applyDownloadedBundle sukses → download + simpan versi + set terpanggil', async () => {
     const { service } = makeService(makeVersionJson());
     const update: BundleUpdate = {
       kind: 'bundle',
@@ -155,7 +155,8 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
       changelog: 'Update Capgo b8',
     };
 
-    await service.applyBundleUpdate(update);
+    const bundle = await service.downloadBundle(update);
+    await service.applyDownloadedBundle(bundle, update.bundleVersion);
 
     expect(mockedUpdater.download).toHaveBeenCalledWith({
       url: 'https://example.com/update.zip',
@@ -165,7 +166,7 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
     expect(mockedUpdater.set).toHaveBeenCalledWith({ id: 'bundle-1' });
   });
 
-  it('applyBundleUpdate gagal di download → app_version dihapus & error dilempar', async () => {
+  it('downloadBundle gagal di download → app_version dihapus & error dilempar', async () => {
     localStorage.setItem(APP_VERSION_STORAGE_KEY, '1760000000000');
     mockedUpdater.download.mockRejectedValue(new Error('network down'));
     const { service } = makeService(makeVersionJson());
@@ -178,12 +179,12 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
       changelog: 'Update Capgo b8',
     };
 
-    await expect(service.applyBundleUpdate(update)).rejects.toThrow('network down');
+    await expect(service.downloadBundle(update)).rejects.toThrow('network down');
     expect(localStorage.getItem(APP_VERSION_STORAGE_KEY)).toBeNull();
     expect(mockedUpdater.set).not.toHaveBeenCalled();
   });
 
-  it('applyBundleUpdate gagal di set() → app_version dihapus & error dilempar', async () => {
+  it('applyDownloadedBundle gagal di set() → app_version dihapus & error dilempar', async () => {
     localStorage.setItem(APP_VERSION_STORAGE_KEY, '1760000000000');
     mockedUpdater.set.mockRejectedValue(new Error('set failed'));
     const { service } = makeService(makeVersionJson());
@@ -196,7 +197,7 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
       changelog: 'Update Capgo b8',
     };
 
-    await expect(service.applyBundleUpdate(update)).rejects.toThrow('set failed');
+    await expect(service.applyDownloadedBundle({ id: 'bundle-1' }, update.bundleVersion)).rejects.toThrow('set failed');
     expect(localStorage.getItem(APP_VERSION_STORAGE_KEY)).toBeNull();
   });
 
@@ -222,24 +223,7 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
     expect(calledOpts).toEqual({ cache: 'no-store' });
   });
 
-  it('applyBundleUpdate memanggil callback onProgress dengan step downloading dan loading', async () => {
-    const { service } = makeService(makeVersionJson());
-    const update: BundleUpdate = {
-      kind: 'bundle',
-      bundleVersion: '1770000000000',
-      bundleUrl: 'https://example.com/update.zip',
-      versionName: '0.2.0',
-      versionCode: 8,
-      changelog: 'Update Capgo b8',
-    };
-
-    const steps: string[] = [];
-    await service.applyBundleUpdate(update, (step) => steps.push(step));
-
-    expect(steps).toEqual(['downloading', 'loading']);
-  });
-
-  it('(a) Guard isUpdating: dua pemanggilan applyBundleUpdate bersamaan → pemanggilan kedua ditolak dan download hanya dipanggil 1x', async () => {
+  it('(a) Guard isUpdating: dua pemanggilan downloadBundle bersamaan → pemanggilan kedua ditolak dan download hanya dipanggil 1x', async () => {
     const { service } = makeService(makeVersionJson());
     const update: BundleUpdate = {
       kind: 'bundle',
@@ -257,14 +241,13 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
       }) as never
     );
 
-    const call1 = service.applyBundleUpdate(update);
+    const call1 = service.downloadBundle(update);
 
-    await expect(service.applyBundleUpdate(update)).rejects.toThrow('Proses pembaruan sedang berjalan.');
+    await expect(service.downloadBundle(update)).rejects.toThrow('Proses pembaruan sedang berjalan.');
     expect(mockedUpdater.download).toHaveBeenCalledTimes(1);
 
     resolveDownload({ id: 'bundle-1', version: '1770000000000' });
     await call1;
-    expect(mockedUpdater.set).toHaveBeenCalledTimes(1);
   });
 
   it('(a-2) Guard isUpdating ter-reset setelah gagal sehingga pemanggilan berikutnya bisa jalan', async () => {
@@ -279,11 +262,12 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
     };
 
     mockedUpdater.download.mockRejectedValueOnce(new Error('Network error'));
-    await expect(service.applyBundleUpdate(update)).rejects.toThrow('Network error');
+    await expect(service.downloadBundle(update)).rejects.toThrow('Network error');
     expect(service.getIsUpdating()).toBe(false);
 
     mockedUpdater.download.mockResolvedValueOnce({ id: 'bundle-2', version: '1770000000000' } as never);
-    await service.applyBundleUpdate(update);
+    const bundle = await service.downloadBundle(update);
+    await service.applyDownloadedBundle(bundle, update.bundleVersion);
     expect(mockedUpdater.download).toHaveBeenCalledTimes(2);
     expect(mockedUpdater.set).toHaveBeenCalledWith({ id: 'bundle-2' });
   });

@@ -226,18 +226,6 @@ export class LiveUpdateService {
       throw err;
     }
   }
-
-  public async applyBundleUpdate(
-    update: BundleUpdate,
-    onProgress?: (step: 'downloading' | 'loading') => void,
-  ): Promise<void> {
-    onProgress?.('downloading');
-    const bundle = await this.downloadBundle(update);
-    onProgress?.('loading');
-    await this.applyDownloadedBundle(bundle, update.bundleVersion);
-  }
-
-
 }
 
 export const liveUpdateService = new LiveUpdateService();
