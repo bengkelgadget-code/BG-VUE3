@@ -16,6 +16,7 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
   beforeEach(async () => {
     setActivePinia(createPinia());
     localStorage.clear();
+    liveUpdateService.clearPendingBundle();
     await db.users.clear();
     await db.appSettings.clear();
     vi.restoreAllMocks();
@@ -234,7 +235,7 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
         versionCode: 12,
         changelog: 'Test update',
       });
-      vi.spyOn(liveUpdateService, 'applyBundleUpdate').mockRejectedValue(new Error('Network failure'));
+      vi.spyOn(liveUpdateService, 'downloadBundle').mockRejectedValue(new Error('Network failure'));
 
       const wrapper = mount(SettingsView, {
         global: { plugins: [router] },
@@ -251,6 +252,62 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
       const err = wrapper.find('.feedback-banner.error');
       expect(err.exists()).toBe(true);
       expect(err.text()).toContain('Gagal mengunduh pembaruan. Coba lagi.');
+    });
+
+    it('(b) Cek manual saat update pending -> pesan siap diterapkan di Beranda (BUKAN sudah versi terbaru)', async () => {
+      const authStore = useAuthStore();
+      authStore.currentUser = {
+        id: 'owner-1',
+        name: 'Owner',
+        role: 'owner',
+        pinHash: 'h',
+        isActive: true,
+        createdAt: Date.now(),
+      };
+
+      vi.spyOn(liveUpdateService, 'checkForUpdate').mockResolvedValue({ kind: 'pending' });
+
+      const wrapper = mount(SettingsView, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+
+      const checkBtn = wrapper.find('.btn-check-update');
+      await checkBtn.trigger('click');
+      await flushPromises();
+
+      const success = wrapper.find('.feedback-banner.success');
+      expect(success.exists()).toBe(true);
+      expect(success.text()).toContain('Pembaruan siap, akan diterapkan di Beranda');
+      expect(success.text()).not.toContain('Aplikasi sudah versi terbaru');
+    });
+
+    it('(b-2) Cek manual saat update sedang diproses/updating -> pesan sedang diproses (BUKAN sudah versi terbaru)', async () => {
+      const authStore = useAuthStore();
+      authStore.currentUser = {
+        id: 'owner-1',
+        name: 'Owner',
+        role: 'owner',
+        pinHash: 'h',
+        isActive: true,
+        createdAt: Date.now(),
+      };
+
+      vi.spyOn(liveUpdateService, 'checkForUpdate').mockResolvedValue({ kind: 'updating' });
+
+      const wrapper = mount(SettingsView, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+
+      const checkBtn = wrapper.find('.btn-check-update');
+      await checkBtn.trigger('click');
+      await flushPromises();
+
+      const success = wrapper.find('.feedback-banner.success');
+      expect(success.exists()).toBe(true);
+      expect(success.text()).toContain('Pembaruan sedang diproses');
+      expect(success.text()).not.toContain('Aplikasi sudah versi terbaru');
     });
   });
 
@@ -449,6 +506,72 @@ describe('b9 & b10: SettingsView Supabase Sync Card, CloudSyncDialog & App Hook'
 
       // Sekarang applyDownloadedBundle dipanggil!
       expect(applySpy).toHaveBeenCalledWith({ id: 'bundle-test' }, '999');
+    });
+
+    it('(a) cek manual SettingsView saat di /settings -> set() TIDAK dipanggil seketika, tertunda dan diterapkan saat kembali ke Home', async () => {
+      await db.users.add({
+        id: 'user-1',
+        name: 'User 1',
+        role: 'owner',
+        pinHash: 'hash',
+        isActive: true,
+        createdAt: Date.now(),
+      });
+      localStorage.setItem('buku_konter_active_user_id', 'user-1');
+
+      vi.spyOn(supabaseSyncService, 'isConfigured').mockReturnValue(false);
+      // Pengecekan awal saat mount App.vue tidak menemukan bundle
+      vi.spyOn(liveUpdateService, 'checkForUpdate')
+        .mockResolvedValueOnce({ kind: 'none' }) // saat App.vue onMounted
+        .mockResolvedValueOnce({ // saat tombol Cek Pembaruan di SettingsView diklik
+          kind: 'bundle',
+          bundleVersion: 'b13-test',
+          bundleUrl: 'https://example.com/update.zip',
+          versionName: '0.2.0',
+          versionCode: 13,
+          changelog: 'OTA b13 manual check',
+        });
+
+      const downloadSpy = vi.spyOn(liveUpdateService, 'downloadBundle').mockResolvedValue({ id: 'bundle-manual-1' });
+      const applySpy = vi.spyOn(liveUpdateService, 'applyDownloadedBundle').mockResolvedValue();
+
+      // Buka halaman Pengaturan
+      await router.push('/settings');
+      await flushPromises();
+
+      const wrapper = mount(App, {
+        global: { plugins: [router] },
+      });
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      // Klik Cek Pembaruan di SettingsView
+      const checkBtn = wrapper.find('.btn-check-update');
+      expect(checkBtn.exists()).toBe(true);
+      await checkBtn.trigger('click');
+      await flushPromises();
+
+      // Download bundle terpanggil
+      expect(downloadSpy).toHaveBeenCalled();
+      // Reload (applyDownloadedBundle) TIDAK dipanggil seketika karena masih di /settings
+      expect(applySpy).not.toHaveBeenCalled();
+      expect(liveUpdateService.hasPendingBundle()).toBe(true);
+
+      // Pesan sukses siap diterapkan di Beranda tampil di SettingsView
+      const successBanner = wrapper.find('.feedback-banner.success');
+      expect(successBanner.exists()).toBe(true);
+      expect(successBanner.text()).toContain('Pembaruan siap, akan diterapkan di Beranda');
+
+      // Kembali ke Beranda (Home)
+      await router.push('/');
+      await flushPromises();
+      await new Promise((r) => setTimeout(r, 100));
+      await flushPromises();
+
+      // Sekarang applyDownloadedBundle terpanggil!
+      expect(applySpy).toHaveBeenCalledWith({ id: 'bundle-manual-1' }, 'b13-test');
+      expect(liveUpdateService.hasPendingBundle()).toBe(false);
     });
   });
 });

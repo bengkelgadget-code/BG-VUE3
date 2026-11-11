@@ -52,8 +52,6 @@ const showCloudSyncDialog = ref(false);
 const syncSuccessMessage = ref('');
 const liveUpdateToastMessage = ref('');
 
-const pendingBundle = ref<{ bundle: { id: string }; version: string } | null>(null);
-
 function isAtHome(): boolean {
   if (!router) return true;
   const current = router.currentRoute.value;
@@ -65,22 +63,24 @@ function isSafeToApply(): boolean {
 }
 
 async function tryApplyPendingBundle() {
-  if (!pendingBundle.value || !isSafeToApply()) return;
-  const { bundle, version } = pendingBundle.value;
-  pendingBundle.value = null;
+  if (!liveUpdateService.hasPendingBundle() || !isSafeToApply()) return;
+  const pending = liveUpdateService.getPendingBundle();
+  if (!pending) return;
   liveUpdateToastMessage.value = 'Memuat pembaruan...';
   try {
-    await liveUpdateService.applyDownloadedBundle(bundle, version);
+    await liveUpdateService.applyDownloadedBundle(pending.bundle, pending.version);
+    liveUpdateService.setPendingBundle(null);
   } catch {
+    liveUpdateService.clearPendingBundle();
     liveUpdateToastMessage.value = '';
   }
 }
 
-// Tunda reload bila route saat ini bukan Home atau dialog sinkron sedang terbuka (b12)
+// Tunda reload bila route saat ini bukan Home atau dialog sinkron sedang terbuka (b12/b13)
 watch(
   [() => router?.currentRoute.value.path, () => showCloudSyncDialog.value],
   () => {
-    if (pendingBundle.value && isSafeToApply()) {
+    if (liveUpdateService.hasPendingBundle() && isSafeToApply()) {
       tryApplyPendingBundle();
     }
   }
@@ -143,8 +143,8 @@ onMounted(async () => {
           liveUpdateToastMessage.value = 'Memuat pembaruan...';
           await liveUpdateService.applyDownloadedBundle(bundle, update.bundleVersion);
         } else {
-          // Tunda reload jika sedang di luar Home atau dialog sinkron sedang terbuka (b12)
-          pendingBundle.value = { bundle, version: update.bundleVersion };
+          // Tunda reload jika sedang di luar Home atau dialog sinkron sedang terbuka (b12/b13)
+          liveUpdateService.setPendingBundle({ bundle, version: update.bundleVersion });
           liveUpdateToastMessage.value = 'Pembaruan siap, akan diterapkan di Beranda.';
           setTimeout(() => {
             if (liveUpdateToastMessage.value.includes('Pembaruan siap')) {

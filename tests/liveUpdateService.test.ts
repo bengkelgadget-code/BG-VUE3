@@ -287,4 +287,67 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
     expect(mockedUpdater.download).toHaveBeenCalledTimes(2);
     expect(mockedUpdater.set).toHaveBeenCalledWith({ id: 'bundle-2' });
   });
+
+  it('checkForUpdate mengembalikan kind: pending saat ada pendingBundle tersimpan', async () => {
+    const { service } = makeService(makeVersionJson());
+    service.setPendingBundle({ bundle: { id: 'bundle-pending' }, version: '1770000000000' });
+
+    const result = await service.checkForUpdate();
+    expect(result).toEqual({ kind: 'pending' });
+  });
+
+  it('checkForUpdate mengembalikan kind: updating saat isUpdating bernilai true tanpa pendingBundle', async () => {
+    const { service } = makeService(makeVersionJson());
+    const update: BundleUpdate = {
+      kind: 'bundle',
+      bundleVersion: '1770000000000',
+      bundleUrl: 'https://example.com/update.zip',
+      versionName: '0.2.0',
+      versionCode: 8,
+      changelog: 'Update Capgo b8',
+    };
+
+    let resolveDownload: (val: unknown) => void = () => {};
+    mockedUpdater.download.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDownload = resolve;
+      }) as never
+    );
+
+    const call1 = service.downloadBundle(update);
+    expect(service.getIsUpdating()).toBe(true);
+
+    const checkResult = await service.checkForUpdate();
+    expect(checkResult).toEqual({ kind: 'updating' });
+
+    resolveDownload({ id: 'b-1' });
+    await call1;
+  });
+
+  it('downloadBundle menolak jika sudah ada pendingBundle', async () => {
+    const { service } = makeService(makeVersionJson());
+    service.setPendingBundle({ bundle: { id: 'bundle-1' }, version: '1770000000000' });
+
+    const update: BundleUpdate = {
+      kind: 'bundle',
+      bundleVersion: '1770000000000',
+      bundleUrl: 'https://example.com/update.zip',
+      versionName: '0.2.0',
+      versionCode: 8,
+      changelog: 'Update Capgo b8',
+    };
+
+    await expect(service.downloadBundle(update)).rejects.toThrow('Proses pembaruan sedang berjalan.');
+  });
+
+  it('clearPendingBundle mereset pendingBundle dan isUpdating', async () => {
+    const { service } = makeService(makeVersionJson());
+    service.setPendingBundle({ bundle: { id: 'bundle-1' }, version: '1770000000000' });
+    expect(service.hasPendingBundle()).toBe(true);
+
+    service.clearPendingBundle();
+    expect(service.hasPendingBundle()).toBe(false);
+    expect(service.getPendingBundle()).toBeNull();
+    expect(service.getIsUpdating()).toBe(false);
+  });
 });

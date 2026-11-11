@@ -300,8 +300,14 @@ async function handleCheckUpdate() {
     const update = await liveUpdateService.checkForUpdate();
     isChecking = false;
     if (update.kind === 'bundle') {
-      showSuccess('Mengunduh & menerapkan pembaruan...');
-      await liveUpdateService.applyBundleUpdate(update);
+      showSuccess('Mengunduh pembaruan...');
+      const bundle = await liveUpdateService.downloadBundle(update);
+      liveUpdateService.setPendingBundle({ bundle, version: update.bundleVersion });
+      showSuccess('Pembaruan siap, akan diterapkan di Beranda.');
+    } else if (update.kind === 'pending') {
+      showSuccess('Pembaruan siap, akan diterapkan di Beranda.');
+    } else if (update.kind === 'updating') {
+      showSuccess('Pembaruan sedang diproses...');
     } else if (update.kind === 'apk') {
       availableUpdate.value = update;
     } else {

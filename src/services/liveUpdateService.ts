@@ -37,7 +37,17 @@ export interface ApkUpdate {
   forceUpdate: boolean;
 }
 
-export type LiveUpdateCheck = { kind: 'none' } | BundleUpdate | ApkUpdate;
+export interface PendingBundle {
+  bundle: { id: string };
+  version: string;
+}
+
+export type LiveUpdateCheck =
+  | { kind: 'none' }
+  | { kind: 'pending' }
+  | { kind: 'updating' }
+  | BundleUpdate
+  | ApkUpdate;
 
 /** Kunci localStorage yang sama seperti Server Pulsa. */
 export const APP_VERSION_STORAGE_KEY = 'app_version';
@@ -51,6 +61,7 @@ export class LiveUpdateService {
   private getInstalledCodeFn: () => Promise<number>;
   private updater: UpdaterLike;
   private isUpdating = false;
+  private pendingBundle: PendingBundle | null = null;
 
   constructor(opts?: {
     updateCheckUrl?: string;
@@ -84,6 +95,23 @@ export class LiveUpdateService {
     return this.isUpdating;
   }
 
+  public getPendingBundle(): PendingBundle | null {
+    return this.pendingBundle;
+  }
+
+  public setPendingBundle(pending: PendingBundle | null): void {
+    this.pendingBundle = pending;
+  }
+
+  public hasPendingBundle(): boolean {
+    return this.pendingBundle !== null;
+  }
+
+  public clearPendingBundle(): void {
+    this.pendingBundle = null;
+    this.isUpdating = false;
+  }
+
   public async getInstalledVersionCode(): Promise<number> {
     return this.getInstalledCodeFn();
   }
@@ -93,8 +121,14 @@ export class LiveUpdateService {
    * 'none' = sudah terbaru / belum ada info bundle / gagal baca versi terpasang.
    */
   public async checkForUpdate(): Promise<LiveUpdateCheck> {
-    if (!Capacitor.isNativePlatform() || this.isUpdating) {
+    if (!Capacitor.isNativePlatform()) {
       return { kind: 'none' };
+    }
+    if (this.hasPendingBundle()) {
+      return { kind: 'pending' };
+    }
+    if (this.isUpdating) {
+      return { kind: 'updating' };
     }
 
     const separator = this.updateCheckUrl.includes('?') ? '&' : '?';
@@ -160,7 +194,7 @@ export class LiveUpdateService {
    * supaya dicoba lagi saat aplikasi dibuka berikutnya, lalu error dilempar ke pemanggil.
    */
   public async downloadBundle(update: BundleUpdate): Promise<{ id: string }> {
-    if (this.isUpdating) {
+    if (this.isUpdating || this.hasPendingBundle()) {
       throw new Error('Proses pembaruan sedang berjalan.');
     }
     if (!update.bundleUrl) {
@@ -175,6 +209,7 @@ export class LiveUpdateService {
       return bundle;
     } catch (err) {
       this.isUpdating = false;
+      this.pendingBundle = null;
       localStorage.removeItem(APP_VERSION_STORAGE_KEY);
       throw err;
     }
@@ -186,6 +221,7 @@ export class LiveUpdateService {
       await this.updater.set({ id: bundle.id });
     } catch (err) {
       this.isUpdating = false;
+      this.pendingBundle = null;
       localStorage.removeItem(APP_VERSION_STORAGE_KEY);
       throw err;
     }
