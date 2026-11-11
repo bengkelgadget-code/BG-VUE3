@@ -422,9 +422,6 @@ const isSyncing = ref(false);
 const lastSyncTime = ref<number | null>(null);
 
 const syncStatusText = computed(() => {
-  if (!supabaseSyncService.isConfigured()) {
-    return 'Belum terhubung ke database Server Pulsa.';
-  }
   if (!lastSyncTime.value) {
     return 'Terhubung ke database Server Pulsa. Sinkron terakhir: belum pernah';
   }

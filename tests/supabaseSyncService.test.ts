@@ -5,9 +5,20 @@ import { supabaseSyncService, SYNC_TABLES } from '../src/services/supabaseSyncSe
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Transaction } from '../src/db/types';
 
+const mockCreateClient = vi.fn();
+
+vi.mock('@supabase/supabase-js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@supabase/supabase-js')>();
+  return {
+    ...actual,
+    createClient: (...args: unknown[]) => mockCreateClient(...args),
+  };
+});
+
 describe('SupabaseSyncService (b9 & b10: Koneksi Data ke Supabase)', () => {
   beforeEach(async () => {
     localStorage.clear();
+    mockCreateClient.mockReset();
     supabaseSyncService.setCustomClient(null);
 
     // Bersihkan semua tabel
@@ -51,6 +62,71 @@ describe('SupabaseSyncService (b9 & b10: Koneksi Data ke Supabase)', () => {
       envRecord.VITE_SUPABASE_ANON_KEY = 'custom-anon-key';
 
       expect(supabaseSyncService.isConfigured()).toBe(true);
+
+      // Restore
+      if (originalUrl) envRecord.VITE_SUPABASE_URL = originalUrl;
+      else delete envRecord.VITE_SUPABASE_URL;
+      if (originalKey) envRecord.VITE_SUPABASE_ANON_KEY = originalKey;
+      else delete envRecord.VITE_SUPABASE_ANON_KEY;
+    });
+
+    it('memanggil createClient dengan URL dan kunci built-in yang TEPAT saat env kosong', async () => {
+      const originalUrl = import.meta.env.VITE_SUPABASE_URL;
+      const originalKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const envRecord = import.meta.env as unknown as Record<string, string | undefined>;
+      delete envRecord.VITE_SUPABASE_URL;
+      delete envRecord.VITE_SUPABASE_ANON_KEY;
+
+      const mockClient = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }),
+        }),
+      } as unknown as SupabaseClient;
+
+      mockCreateClient.mockReturnValue(mockClient);
+
+      supabaseSyncService.setCustomClient(null);
+      await supabaseSyncService.testConnection();
+
+      expect(mockCreateClient).toHaveBeenCalledWith(
+        'https://slkdoaeacjxgkviicaot.supabase.co',
+        'sb_publishable_Hb_fii3GCvufN1N9Wqs60g_Mkkm_U9W',
+        { auth: { persistSession: false } }
+      );
+
+      // Restore
+      if (originalUrl) envRecord.VITE_SUPABASE_URL = originalUrl;
+      if (originalKey) envRecord.VITE_SUPABASE_ANON_KEY = originalKey;
+    });
+
+    it('memanggil createClient dengan nilai env saat env terisi (override built-in)', async () => {
+      const originalUrl = import.meta.env.VITE_SUPABASE_URL;
+      const originalKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const envRecord = import.meta.env as unknown as Record<string, string | undefined>;
+
+      envRecord.VITE_SUPABASE_URL = 'https://custom-env.supabase.co';
+      envRecord.VITE_SUPABASE_ANON_KEY = 'custom-env-key';
+
+      const mockClient = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }),
+        }),
+      } as unknown as SupabaseClient;
+
+      mockCreateClient.mockReturnValue(mockClient);
+
+      supabaseSyncService.setCustomClient(null);
+      await supabaseSyncService.testConnection();
+
+      expect(mockCreateClient).toHaveBeenCalledWith(
+        'https://custom-env.supabase.co',
+        'custom-env-key',
+        { auth: { persistSession: false } }
+      );
 
       // Restore
       if (originalUrl) envRecord.VITE_SUPABASE_URL = originalUrl;
