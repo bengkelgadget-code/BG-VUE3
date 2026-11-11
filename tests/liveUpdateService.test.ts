@@ -11,6 +11,7 @@ vi.mock('@capgo/capacitor-updater', () => ({
   CapacitorUpdater: {
     download: vi.fn(),
     set: vi.fn(),
+    current: vi.fn(),
   },
 }));
 
@@ -67,12 +68,49 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('instal pertama (belum ada app_version tersimpan) → simpan versi & jangan unduh', async () => {
+  it('instal pertama (belum ada app_version tersimpan) → kembalikan info bundle untuk diunduh (tidak mengunci versi)', async () => {
+    const { service } = makeService(makeVersionJson());
+
+    const result = await service.checkForUpdate();
+    expect(result).toEqual({
+      kind: 'bundle',
+      bundleVersion: '1770000000000',
+      bundleUrl: 'https://example.com/update.zip',
+      versionName: '0.2.0',
+      versionCode: 8,
+      changelog: 'Update Capgo b8',
+    });
+    expect(localStorage.getItem(APP_VERSION_STORAGE_KEY)).toBeNull();
+    expect(mockedUpdater.download).not.toHaveBeenCalled();
+  });
+
+  it('CapacitorUpdater.current() melaporkan builtin → abaikan localStorage dan kembalikan bundle update', async () => {
+    localStorage.setItem(APP_VERSION_STORAGE_KEY, '1770000000000');
+    mockedUpdater.current.mockResolvedValueOnce({
+      bundle: { id: 'builtin', version: 'builtin', downloaded: '', checksum: '', status: 'success' },
+      native: '1.0.0',
+    } as never);
+    const { service } = makeService(makeVersionJson());
+
+    const result = await service.checkForUpdate();
+    expect(result).toEqual({
+      kind: 'bundle',
+      bundleVersion: '1770000000000',
+      bundleUrl: 'https://example.com/update.zip',
+      versionName: '0.2.0',
+      versionCode: 8,
+      changelog: 'Update Capgo b8',
+    });
+  });
+
+  it('CapacitorUpdater.current() melaporkan versi bundle sama → kembalikan none', async () => {
+    mockedUpdater.current.mockResolvedValueOnce({
+      bundle: { id: '1770000000000', version: '1770000000000', downloaded: '', checksum: '', status: 'success' },
+      native: '1.0.0',
+    } as never);
     const { service } = makeService(makeVersionJson());
 
     expect(await service.checkForUpdate()).toEqual({ kind: 'none' });
-    expect(localStorage.getItem(APP_VERSION_STORAGE_KEY)).toBe('1770000000000');
-    expect(mockedUpdater.download).not.toHaveBeenCalled();
   });
 
   it('bundle_version baru → kembalikan info bundle (download belum dipanggil)', async () => {

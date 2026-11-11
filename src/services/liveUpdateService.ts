@@ -163,14 +163,34 @@ export class LiveUpdateService {
       return { kind: 'none' };
     }
 
-    const storedVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
-    if (!storedVersion) {
-      // Instal pertama / belum pernah mencatat versi bundle: catat versi yang sedang
-      // berjalan (sudah ada di dalam APK) dan jangan unduh apa-apa.
-      localStorage.setItem(APP_VERSION_STORAGE_KEY, bundleVersion);
-      return { kind: 'none' };
+    // Periksa versi bundle yang sedang aktif berjalan.
+    // 1. Coba baca dari CapacitorUpdater.current() (sumber status Capgo di native).
+    //    Bila bundle.version atau bundle.id adalah 'builtin', berarti aplikasi sedang berjalan
+    //    dari aset bawaan APK dan belum pernah menerapkan bundle OTA.
+    // 2. Baca dari localStorage APP_VERSION_STORAGE_KEY bila current() tidak tersedia / mock.
+    let activeBundleVersion: string | null = null;
+    let isBuiltin = false;
+    try {
+      if (typeof this.updater?.current === 'function') {
+        const currentResult = await this.updater.current();
+        const curVersion = currentResult?.bundle?.version;
+        const curId = currentResult?.bundle?.id;
+        if (curVersion === 'builtin' || curId === 'builtin') {
+          isBuiltin = true;
+        } else if (curVersion) {
+          activeBundleVersion = curVersion;
+        }
+      }
+    } catch {
+      // Abaikan bila platform atau mock tidak mendukung current()
     }
-    if (storedVersion === bundleVersion) {
+
+    if (!activeBundleVersion && !isBuiltin) {
+      activeBundleVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
+    }
+
+    // Bila bundle yang sedang berjalan sudah sama dengan bundle remote, tidak perlu update.
+    if (activeBundleVersion === bundleVersion) {
       return { kind: 'none' };
     }
 

@@ -1,10 +1,10 @@
 {
-  "version_code": 14,
+  "version_code": 15,
   "version_name": "0.2.0",
-  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b14/buku-konter-v0.2.0-b14.apk",
-  "bundle_version": "1794358637938",
-  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b14/update.zip",
+  "download_url": "",
+  "bundle_version": "",
+  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b15/update.zip",
   "min_apk_version_code": 8,
-  "changelog": "Kredensial Supabase tertanam, hapus form kredensial, perbaiki pemetaan katalog",
+  "changelog": "Perbaikan deteksi live update OTA: hilangkan jebakan first-install agar update bundle langsung terunduh otomatis (b15)",
   "force_update": false
 }
