@@ -45,6 +45,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Patch Capgo Native Plugin
+        run: node scripts/patch-capgo.js
+
       - name: Run Typecheck
         run: npm run typecheck
 
@@ -177,10 +180,15 @@ jobs:
           BUNDLE_DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}/update.zip"
           node -e "
             const fs = require('fs');
+            const crypto = require('crypto');
             const v = JSON.parse(fs.readFileSync('version.json', 'utf8'));
             v.download_url = '$APK_DOWNLOAD_URL';
             v.bundle_url = '$BUNDLE_DOWNLOAD_URL';
             v.bundle_version = String(Date.now());
+            if (fs.existsSync('update.zip')) {
+              const zipBuffer = fs.readFileSync('update.zip');
+              v.bundle_checksum = crypto.createHash('sha256').update(zipBuffer).digest('hex');
+            }
             fs.writeFileSync('version.json', JSON.stringify(v, null, 2) + '\n');
           "
           git config --global user.name "github-actions[bot]"

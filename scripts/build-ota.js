@@ -6,12 +6,11 @@
 // - Server Pulsa menulis dist/version.json (manifest update yang disajikan Vercel).
 //   Buku Konter TIDAK memakai Vercel — manifest update adalah version.json di ROOT repo
 //   (dibaca aplikasi dari raw.githubusercontent.com); field bundle_version / bundle_url /
-//   min_apk_version_code diisi langkah bot workflow (lihat .github/workflows/auto_release.yml).
-//   Jadi script ini TIDAK menulis version.json.
+//   bundle_checksum / min_apk_version_code diisi langkah bot workflow (lihat .github/workflows/auto_release.yml).
 // - update.zip diletakkan DI LUAR dist/ (root repo) supaya tidak ikut tersalin ke dalam
-//   APK saat `npx cap sync` (Server Pulsa mengatasinya dengan `rm -f dist/update.zip`
-//   sebelum sync; cara ini lebih aman karena zip memang tidak pernah masuk dist/).
+//   APK saat `npx cap sync`.
 import fs from 'fs';
+import crypto from 'crypto';
 import process from 'node:process';
 import { ZipArchive } from 'archiver';
 import path from 'path';
@@ -41,7 +40,10 @@ const archive = new ZipArchive({
 });
 
 output.on('close', () => {
+  const fileBuffer = fs.readFileSync(finalZip);
+  const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
   console.log(`Generated OTA bundle: ${archive.pointer()} total bytes -> ${finalZip}`);
+  console.log(`Bundle SHA-256 Checksum: ${sha256}`);
 });
 
 archive.on('error', (err) => {

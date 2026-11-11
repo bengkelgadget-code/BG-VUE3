@@ -372,4 +372,32 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
     expect(service.getPendingBundle()).toBeNull();
     expect(service.getIsUpdating()).toBe(false);
   });
+
+  it('checkForUpdate membaca bundle_checksum dan downloadBundle menyertakannya ke updater.download', async () => {
+    const { service } = makeService(
+      makeVersionJson({
+        bundle_checksum: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      })
+    );
+
+    const checkResult = await service.checkForUpdate();
+    expect(checkResult).toEqual({
+      kind: 'bundle',
+      bundleVersion: '1770000000000',
+      bundleUrl: 'https://example.com/update.zip',
+      bundleChecksum: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      versionName: '0.2.0',
+      versionCode: 8,
+      changelog: 'Update Capgo b8',
+    });
+
+    if (checkResult.kind === 'bundle') {
+      await service.downloadBundle(checkResult);
+      expect(mockedUpdater.download).toHaveBeenCalledWith({
+        url: 'https://example.com/update.zip',
+        version: '1770000000000',
+        checksum: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
+    }
+  });
 });

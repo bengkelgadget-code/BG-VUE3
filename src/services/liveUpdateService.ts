@@ -23,6 +23,7 @@ export interface BundleUpdate {
   kind: 'bundle';
   bundleVersion: string;
   bundleUrl: string;
+  bundleChecksum?: string;
   versionName: string;
   versionCode: number;
   changelog: string;
@@ -198,10 +199,12 @@ export class LiveUpdateService {
     if (!bundleUrl) {
       throw new Error('Pembaruan bundle tersedia, tetapi URL bundle tidak tersedia.');
     }
+    const bundleChecksum = data.bundle_checksum ? String(data.bundle_checksum) : undefined;
     return {
       kind: 'bundle',
       bundleVersion,
       bundleUrl,
+      ...(bundleChecksum ? { bundleChecksum } : {}),
       versionName: String(data.version_name ?? ''),
       versionCode: Number(data.version_code ?? 0),
       changelog: String(data.changelog ?? ''),
@@ -222,10 +225,14 @@ export class LiveUpdateService {
     }
     this.isUpdating = true;
     try {
-      const bundle = await this.updater.download({
+      const downloadParams: { url: string; version: string; checksum?: string } = {
         url: update.bundleUrl,
         version: update.bundleVersion,
-      });
+      };
+      if (update.bundleChecksum) {
+        downloadParams.checksum = update.bundleChecksum;
+      }
+      const bundle = await this.updater.download(downloadParams);
       return bundle;
     } catch (err) {
       this.isUpdating = false;
