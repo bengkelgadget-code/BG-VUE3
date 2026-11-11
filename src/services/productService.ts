@@ -118,9 +118,35 @@ export class ProductService {
       throw new AppError('Produk tidak ditemukan.');
     }
 
+    if (patch.name !== undefined) {
+      const name = patch.name.trim();
+      if (!name) {
+        throw new AppError('Nama produk wajib diisi.');
+      }
+      patch.name = name;
+    }
+
+    if (patch.modal !== undefined && (patch.modal < 0 || !Number.isInteger(patch.modal))) {
+      throw new AppError('Modal produk harus bilangan bulat positif.');
+    }
+
+    if (patch.hargaJual !== undefined && (patch.hargaJual < 0 || !Number.isInteger(patch.hargaJual))) {
+      throw new AppError('Harga jual produk harus bilangan bulat positif.');
+    }
+
+    const cat = patch.category ?? existing.category;
+    const isPhysical = cat === 'voucher' || cat === 'perdana' || cat === 'aksesoris';
+    let stock = patch.stock !== undefined ? patch.stock : existing.stock;
+    if (isPhysical) {
+      stock = stock !== null && stock !== undefined ? Math.max(0, Math.round(stock)) : 0;
+    } else {
+      stock = null;
+    }
+
     const now = Date.now();
     await db.products.update(id, {
       ...patch,
+      stock,
       updatedAt: now,
     });
 
@@ -148,6 +174,39 @@ export class ProductService {
         createdAt: now,
       });
     }
+
+    if (patch.name !== undefined && patch.name !== existing.name) {
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: opts.actorUserId,
+        action: 'ubah_produk_master',
+        entityType: 'product',
+        entityId: id,
+        detail: JSON.stringify({ oldName: existing.name, newName: patch.name }),
+        createdAt: now,
+      });
+    }
+  }
+
+  public async deleteProduct(id: string, opts: { actorUserId: string }): Promise<void> {
+    await this.checkAdminAccess(opts.actorUserId);
+
+    const existing = await db.products.get(id);
+    if (!existing) {
+      throw new AppError('Produk tidak ditemukan.');
+    }
+
+    await db.products.delete(id);
+
+    await db.auditLogs.add({
+      id: uuidv4(),
+      actorUserId: opts.actorUserId,
+      action: 'hapus_produk_master',
+      entityType: 'product',
+      entityId: id,
+      detail: JSON.stringify({ name: existing.name, category: existing.category }),
+      createdAt: Date.now(),
+    });
   }
 
   public async deactivateProduct(id: string, opts: { actorUserId: string }): Promise<void> {

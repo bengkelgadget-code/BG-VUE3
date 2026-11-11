@@ -3,7 +3,7 @@
     <div class="form-container">
       <div class="view-header">
         <button type="button" class="btn-back" @click="router.back()">← Kembali</button>
-        <h2 class="page-title">Tambah Produk Master</h2>
+        <h2 class="page-title">{{ isEditMode ? 'Edit Produk Master' : 'Tambah Produk Master' }}</h2>
       </div>
 
       <form class="product-form" @submit.prevent="handleSubmit">
@@ -196,18 +196,93 @@
           </div>
         </div>
 
-        <button type="submit" class="btn-submit" :disabled="isSubmitting || !name.trim()">
+        <!-- Action Buttons -->
+        <div v-if="isEditMode" class="form-actions-edit">
+          <button
+            type="submit"
+            class="btn-submit btn-update"
+            :disabled="isSubmitting || !name.trim()"
+            data-testid="btn-update-product"
+          >
+            {{ isSubmitting ? 'Memperbarui...' : 'Update Produk' }}
+          </button>
+
+          <button
+            type="button"
+            class="btn-delete-product"
+            :disabled="isSubmitting || isDeleting"
+            data-testid="btn-delete-product"
+            @click="showDeleteConfirm = true"
+          >
+            <Trash2 class="btn-action-icon" />
+            <span>Hapus Produk</span>
+          </button>
+        </div>
+
+        <button
+          v-else
+          type="submit"
+          class="btn-submit"
+          :disabled="isSubmitting || !name.trim()"
+          data-testid="btn-save-product"
+        >
           {{ isSubmitting ? 'Menyimpan...' : 'Simpan Produk Master' }}
         </button>
       </form>
+    </div>
+
+    <!-- Modal Konfirmasi Hapus Produk -->
+    <div
+      v-if="showDeleteConfirm"
+      class="modal-overlay"
+      data-testid="delete-confirm-modal"
+      @click.self="showDeleteConfirm = false"
+    >
+      <div class="modal-box">
+        <div class="modal-danger-header">
+          <div class="modal-icon-danger">
+            <AlertTriangle class="icon-warning" />
+          </div>
+          <div>
+            <h3 class="modal-title">Hapus Produk?</h3>
+            <p class="modal-desc">
+              Apakah Anda yakin ingin menghapus produk <strong>"{{ name }}"</strong> dari Master Produk? Tindakan ini tidak dapat dibatalkan.
+            </p>
+          </div>
+        </div>
+
+        <div v-if="deleteError" class="error-banner mb-3">
+          {{ deleteError }}
+        </div>
+
+        <div class="modal-actions">
+          <button
+            type="button"
+            class="btn-modal-cancel"
+            :disabled="isDeleting"
+            @click="showDeleteConfirm = false"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            class="btn-modal-danger"
+            :disabled="isDeleting"
+            data-testid="btn-confirm-delete"
+            @click="handleDeleteProduct"
+          >
+            {{ isDeleting ? 'Menghapus...' : 'Ya, Hapus' }}
+          </button>
+        </div>
+      </div>
     </div>
   </AppScaffold>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { ChevronDown, Plus, Trash2 } from 'lucide-vue-next';
+import { useRoute, useRouter } from 'vue-router';
+import { ChevronDown, Plus, Trash2, AlertTriangle } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import { productService } from '../services/productService';
 import { brandService } from '../services/brandService';
@@ -216,8 +291,16 @@ import { formatRupiah, parseRupiah } from '../utils/format';
 import { AppError } from '../core/errors';
 import type { Brand } from '../db/types';
 
+const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+
+const productId = computed(() => (route.params['id'] as string) || '');
+const isEditMode = computed(() => Boolean(productId.value));
+
+const showDeleteConfirm = ref(false);
+const isDeleting = ref(false);
+const deleteError = ref('');
 
 // Fields form
 const name = ref('');
@@ -345,38 +428,99 @@ function onHargaJualInput(e: Event) {
   hargaJual.value = parseRupiah(target.value);
 }
 
+async function loadProductData() {
+  if (!productId.value) return;
+  try {
+    const prod = await productService.getProduct(productId.value);
+    if (!prod) {
+      errorMessage.value = 'Produk tidak ditemukan.';
+      return;
+    }
+    name.value = prod.name;
+    category.value = prod.category as typeof category.value;
+    operator.value = prod.operator || '';
+    operatorInput.value = prod.operator || '';
+    modal.value = prod.modal;
+    hargaJual.value = prod.hargaJual;
+    stock.value = prod.stock ?? 0;
+    stockMin.value = prod.stockMin ?? 2;
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : 'Gagal memuat produk.';
+  }
+}
+
 async function handleSubmit() {
   errorMessage.value = '';
   isSubmitting.value = true;
   try {
-    await productService.addProduct(
-      {
-        name: name.value.trim(),
-        category: category.value,
-        operator: operator.value.trim() || undefined,
-        denomination: undefined, // Denominasi dihapus dari form, tetap kompatibel
-        modal: modal.value,
-        hargaJual: hargaJual.value,
-        stock: isPhysical.value ? stock.value : null,
-        stockMin: stockMin.value,
-        isActive: true,
-      },
-      { actorUserId: authStore.currentUser?.id || 'system' }
-    );
-    router.replace('/masters');
+    if (isEditMode.value) {
+      await productService.updateProduct(
+        productId.value,
+        {
+          name: name.value.trim(),
+          category: category.value,
+          operator: operator.value.trim() || undefined,
+          modal: modal.value,
+          hargaJual: hargaJual.value,
+          stock: isPhysical.value ? stock.value : null,
+          stockMin: stockMin.value,
+        },
+        { actorUserId: authStore.currentUser?.id || 'system' }
+      );
+    } else {
+      await productService.addProduct(
+        {
+          name: name.value.trim(),
+          category: category.value,
+          operator: operator.value.trim() || undefined,
+          denomination: undefined, // Denominasi dihapus dari form, tetap kompatibel
+          modal: modal.value,
+          hargaJual: hargaJual.value,
+          stock: isPhysical.value ? stock.value : null,
+          stockMin: stockMin.value,
+          isActive: true,
+        },
+        { actorUserId: authStore.currentUser?.id || 'system' }
+      );
+    }
+    await router.replace('/masters');
   } catch (err: unknown) {
     if (err instanceof AppError) {
       errorMessage.value = err.message;
     } else {
-      errorMessage.value = 'Gagal menyimpan produk master.';
+      errorMessage.value = isEditMode.value
+        ? 'Gagal memperbarui produk master.'
+        : 'Gagal menyimpan produk master.';
     }
   } finally {
     isSubmitting.value = false;
   }
 }
 
-onMounted(() => {
-  loadBrands();
+async function handleDeleteProduct() {
+  if (!productId.value) return;
+  deleteError.value = '';
+  isDeleting.value = true;
+  try {
+    await productService.deleteProduct(productId.value, {
+      actorUserId: authStore.currentUser?.id || 'system',
+    });
+    showDeleteConfirm.value = false;
+    await router.replace('/masters');
+  } catch (err: unknown) {
+    if (err instanceof AppError) {
+      deleteError.value = err.message;
+    } else {
+      deleteError.value = 'Gagal menghapus produk master.';
+    }
+  } finally {
+    isDeleting.value = false;
+  }
+}
+
+onMounted(async () => {
+  await loadBrands();
+  await loadProductData();
   if (typeof document !== 'undefined') {
     document.addEventListener('click', handleClickOutside);
   }
@@ -686,9 +830,152 @@ onUnmounted(() => {
   font-weight: 700;
   cursor: pointer;
   transition: background-color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
 }
 
 .btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-actions-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.btn-delete-product {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 48px;
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius-btn);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-delete-product:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
+
+.btn-delete-product:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-action-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Modal Konfirmasi Hapus */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: var(--surface-card);
+  border-radius: 16px;
+  padding: 20px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-danger-header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.modal-icon-danger {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #fee2e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.icon-warning {
+  width: 22px;
+  height: 22px;
+  color: #dc2626;
+}
+
+.modal-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 4px 0;
+}
+
+.modal-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-modal-cancel {
+  padding: 10px 18px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-card);
+  border-radius: var(--radius-btn);
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-modal-danger {
+  padding: 10px 20px;
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-modal-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.btn-modal-danger:disabled,
+.btn-modal-cancel:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

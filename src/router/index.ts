@@ -69,6 +69,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, roles: ['owner', 'admin'] },
   },
   {
+    path: '/masters/product/:id/edit',
+    name: 'ProductEdit',
+    component: () => import('../views/ProductFormView.vue'),
+    meta: { requiresAuth: true, roles: ['owner', 'admin'] },
+  },
+  {
+    path: '/masters/product/:id',
+    name: 'ProductDetail',
+    redirect: (to) => `/masters/product/${to.params['id']}/edit`,
+    meta: { requiresAuth: true, roles: ['owner', 'admin'] },
+  },
+  {
     path: '/customers',
     name: 'Customers',
     component: () => import('../views/CustomersView.vue'),

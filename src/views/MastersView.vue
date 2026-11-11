@@ -39,7 +39,17 @@
       </EmptyState>
 
       <div v-else class="product-list">
-        <div v-for="p in filteredProducts" :key="p.id" class="product-card">
+        <div
+          v-for="p in filteredProducts"
+          :key="p.id"
+          class="product-card"
+          role="button"
+          tabindex="0"
+          :title="`Klik untuk edit ${p.name}`"
+          :data-testid="`product-card-${p.id}`"
+          @click="handleCardClick(p.id)"
+          @keydown.enter="handleCardClick(p.id)"
+        >
           <div class="prod-left">
             <span class="prod-name">{{ p.name }}</span>
             <span class="prod-cat">{{ p.category.toUpperCase() }} {{ p.operator ? `• ${p.operator}` : '' }}</span>
@@ -48,10 +58,13 @@
             </span>
           </div>
 
-          <div class="prod-right">
-            <span class="prod-jual money-display">Jual: {{ formatRupiah(p.hargaJual) }}</span>
-            <span class="prod-modal money-display">Modal: {{ formatRupiah(p.modal) }}</span>
-            <span class="prod-laba money-display">Laba: {{ formatRupiah(p.hargaJual - p.modal) }}</span>
+          <div class="prod-right-wrapper">
+            <div class="prod-right">
+              <span class="prod-jual money-display">Jual: {{ formatRupiah(p.hargaJual) }}</span>
+              <span class="prod-modal money-display">Modal: {{ formatRupiah(p.modal) }}</span>
+              <span class="prod-laba money-display">Laba: {{ formatRupiah(p.hargaJual - p.modal) }}</span>
+            </div>
+            <ChevronRight class="prod-arrow" />
           </div>
         </div>
       </div>
@@ -61,14 +74,21 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { ChevronRight } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import EmptyState from '../components/EmptyState.vue';
 import { db } from '../db/database';
 import { formatRupiah } from '../utils/format';
 import type { Product } from '../db/types';
 
+const router = useRouter();
 const products = ref<Product[]>([]);
 const selectedCategory = ref<string>('all');
+
+function handleCardClick(productId: string) {
+  router.push(`/masters/product/${productId}/edit`);
+}
 
 const categories = [
   { key: 'all', label: 'Semua' },
@@ -163,18 +183,34 @@ const filteredProducts = computed(() => {
   padding: 12px 14px;
   border-radius: var(--radius-card);
   border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.product-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.product-card:active {
+  transform: translateY(0);
 }
 
 .prod-left {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  flex: 1;
+  min-width: 0;
 }
 
 .prod-name {
   font-size: 14px;
   font-weight: 700;
   color: var(--text-main);
+  word-break: break-word;
 }
 
 .prod-cat {
@@ -188,11 +224,30 @@ const filteredProducts = computed(() => {
   color: var(--text-muted);
 }
 
+.prod-right-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .prod-right {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
+}
+
+.prod-arrow {
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.product-card:hover .prod-arrow {
+  color: var(--color-primary);
+  transform: translateX(2px);
 }
 
 .prod-jual {
