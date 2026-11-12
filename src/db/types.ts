@@ -145,7 +145,7 @@ export interface StockMovement {
   createdAt: number;
 }
 
-export type UserRole = 'owner' | 'admin' | 'kasir';
+export type UserRole = 'owner' | 'admin' | 'kepala_kasir' | 'kasir';
 
 export interface User {
   id: string;

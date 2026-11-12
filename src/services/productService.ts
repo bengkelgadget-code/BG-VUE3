@@ -134,6 +134,10 @@ export class ProductService {
       throw new AppError('Harga jual produk harus bilangan bulat positif.');
     }
 
+    if (patch.stockMin !== undefined && patch.stockMin !== null && (patch.stockMin < 0 || !Number.isInteger(patch.stockMin))) {
+      throw new AppError('Batas minimum stok harus bilangan bulat positif.');
+    }
+
     const cat = patch.category ?? existing.category;
     const isPhysical = cat === 'voucher' || cat === 'perdana' || cat === 'aksesoris';
     let stock = patch.stock !== undefined ? patch.stock : existing.stock;
@@ -183,6 +187,54 @@ export class ProductService {
         entityType: 'product',
         entityId: id,
         detail: JSON.stringify({ oldName: existing.name, newName: patch.name }),
+        createdAt: now,
+      });
+    }
+
+    if (patch.category !== undefined && patch.category !== existing.category) {
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: opts.actorUserId,
+        action: 'ubah_kategori_produk',
+        entityType: 'product',
+        entityId: id,
+        detail: JSON.stringify({ oldCategory: existing.category, newCategory: patch.category }),
+        createdAt: now,
+      });
+    }
+
+    if (patch.operator !== undefined && patch.operator !== existing.operator) {
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: opts.actorUserId,
+        action: 'ubah_operator_produk',
+        entityType: 'product',
+        entityId: id,
+        detail: JSON.stringify({ oldOperator: existing.operator, newOperator: patch.operator }),
+        createdAt: now,
+      });
+    }
+
+    if (patch.stock !== undefined && patch.stock !== existing.stock) {
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: opts.actorUserId,
+        action: 'ubah_stok_master',
+        entityType: 'product',
+        entityId: id,
+        detail: JSON.stringify({ oldStock: existing.stock, newStock: patch.stock }),
+        createdAt: now,
+      });
+    }
+
+    if (patch.stockMin !== undefined && patch.stockMin !== existing.stockMin) {
+      await db.auditLogs.add({
+        id: uuidv4(),
+        actorUserId: opts.actorUserId,
+        action: 'ubah_stok_min_master',
+        entityType: 'product',
+        entityId: id,
+        detail: JSON.stringify({ oldStockMin: existing.stockMin, newStockMin: patch.stockMin }),
         createdAt: now,
       });
     }

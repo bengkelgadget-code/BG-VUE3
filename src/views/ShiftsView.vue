@@ -3,10 +3,10 @@
     <div class="shifts-container">
       <div class="view-header">
         <h2 class="page-title">Shift & Serah Terima</h2>
-        <router-link v-if="!activeShift" to="/shifts/open" class="btn-open">
+        <router-link v-if="!activeShift && !authStore.isOwner" to="/shifts/open" class="btn-open">
           Buka Shift Baru
         </router-link>
-        <router-link v-else to="/shifts/close" class="btn-close">
+        <router-link v-else-if="activeShift" to="/shifts/close" class="btn-close">
           Tutup Shift Aktif
         </router-link>
       </div>
@@ -89,9 +89,12 @@ onMounted(async () => {
 
 async function loadData() {
   if (authStore.currentUser) {
-    const active = await db.shifts
+    let active = await db.shifts
       .where({ userId: authStore.currentUser.id, status: 'open' })
       .first();
+    if (!active && authStore.isOwner) {
+      active = await db.shifts.where('status').equals('open').first();
+    }
     activeShift.value = active || null;
   }
   shifts.value = await db.shifts.orderBy('openedAt').reverse().toArray();

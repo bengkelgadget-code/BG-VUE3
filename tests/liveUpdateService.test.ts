@@ -400,4 +400,27 @@ describe('b8: LiveUpdateService (Capgo, ala Server Pulsa)', () => {
       });
     }
   });
+
+  it('bila version.json tidak punya bundle_checksum, downloadBundle memanggil download() TANPA key checksum', async () => {
+    mockedUpdater.download.mockClear();
+    const { service } = makeService(
+      makeVersionJson({
+        bundle_checksum: undefined,
+      })
+    );
+
+    const checkResult = await service.checkForUpdate();
+    expect(checkResult.kind).toBe('bundle');
+    if (checkResult.kind === 'bundle') {
+      expect(checkResult.bundleChecksum).toBeUndefined();
+      await service.downloadBundle(checkResult);
+      expect(mockedUpdater.download).toHaveBeenCalledTimes(1);
+      const callArgs = mockedUpdater.download.mock.calls[0][0];
+      expect(callArgs).toEqual({
+        url: 'https://example.com/update.zip',
+        version: '1770000000000',
+      });
+      expect(callArgs).not.toHaveProperty('checksum');
+    }
+  });
 });

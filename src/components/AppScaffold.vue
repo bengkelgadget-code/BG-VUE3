@@ -35,8 +35,13 @@
         <span class="nav-label">Transaksi</span>
       </router-link>
 
-      <!-- FAB Tambah Transaksi di tengah -->
-      <router-link to="/transactions/add" class="nav-fab" aria-label="Tambah Transaksi">
+      <!-- FAB Tambah Transaksi di tengah (disembunyikan untuk Owner) -->
+      <router-link
+        v-if="!authStore.isOwner"
+        to="/transactions/add"
+        class="nav-fab"
+        aria-label="Tambah Transaksi"
+      >
         <Plus class="fab-icon" />
       </router-link>
 

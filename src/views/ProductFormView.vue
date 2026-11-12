@@ -50,6 +50,7 @@
             <div class="brand-combobox-wrapper">
               <div ref="brandDropdownRef" class="brand-input-container">
                 <input
+                  id="product-operator"
                   v-model="operatorInput"
                   type="text"
                   class="form-input brand-search-input"
@@ -205,6 +206,16 @@
             data-testid="btn-update-product"
           >
             {{ isSubmitting ? 'Memperbarui...' : 'Update Produk' }}
+          </button>
+
+          <button
+            type="button"
+            class="btn-deactivate-product"
+            :disabled="isSubmitting || isDeleting"
+            data-testid="btn-deactivate-product"
+            @click="handleDeactivateProduct"
+          >
+            <span>Nonaktifkan</span>
           </button>
 
           <button
@@ -515,6 +526,22 @@ async function handleDeleteProduct() {
     }
   } finally {
     isDeleting.value = false;
+  }
+}
+
+async function handleDeactivateProduct() {
+  if (!productId.value) return;
+  errorMessage.value = '';
+  isSubmitting.value = true;
+  try {
+    await productService.deactivateProduct(productId.value, {
+      actorUserId: authStore.currentUser?.id || 'system',
+    });
+    await router.replace('/masters');
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : 'Gagal menonaktifkan produk master.';
+  } finally {
+    isSubmitting.value = false;
   }
 }
 
@@ -846,6 +873,33 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 12px;
   margin-top: 4px;
+}
+
+.btn-deactivate-product {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-btn);
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--border-color);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-deactivate-product:hover:not(:disabled) {
+  background: var(--surface-bg);
+  color: var(--text-main);
+}
+
+.btn-deactivate-product:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-delete-product {

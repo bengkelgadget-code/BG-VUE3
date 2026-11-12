@@ -202,6 +202,14 @@ export class AuthServiceImpl {
     return role === 'owner' || role === 'admin';
   }
 
+  public canEditTransaction(role: UserRole): boolean {
+    return role === 'owner' || role === 'admin' || role === 'kepala_kasir';
+  }
+
+  public canVoidTransaction(role: UserRole): boolean {
+    return role === 'owner' || role === 'admin' || role === 'kepala_kasir';
+  }
+
   /**
    * Menambahkan petugas baru (Admin / Kasir).
    * Hanya boleh dilakukan oleh Owner.
@@ -212,8 +220,8 @@ export class AuthServiceImpl {
       throw new AppError('Hanya Owner yang berhak menambah petugas.');
     }
 
-    if (role !== 'admin' && role !== 'kasir') {
-      throw new AppError('Role petugas hanya boleh Admin atau Kasir.');
+    if (role !== 'admin' && role !== 'kepala_kasir' && role !== 'kasir') {
+      throw new AppError('Role petugas hanya boleh Admin, Kepala Kasir, atau Kasir.');
     }
 
     const trimmedName = name ? name.trim() : '';
@@ -277,8 +285,8 @@ export class AuthServiceImpl {
       throw new AppError('Akun Owner tidak dapat diubah dari menu kelola petugas.');
     }
 
-    if (data.role && data.role !== 'admin' && data.role !== 'kasir') {
-      throw new AppError('Role petugas hanya boleh Admin atau Kasir.');
+    if (data.role && data.role !== 'admin' && data.role !== 'kepala_kasir' && data.role !== 'kasir') {
+      throw new AppError('Role petugas hanya boleh Admin, Kepala Kasir, atau Kasir.');
     }
 
     const updates: Partial<User> = {};

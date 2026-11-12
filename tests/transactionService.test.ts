@@ -355,14 +355,22 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
         { actorUserId: 'kasir-1', shiftId: 'shift-1' }
       );
 
-      // Kasir mencoba void sendiri
+      // Kasir mencoba void sendiri tanpa persetujuan Owner
       await expect(
         transactionService.voidTransaction(txId, {
           reason: 'Kasir mencoba void',
           actorUserId: 'kasir-1',
-          adminPin: '111111',
         })
-      ).rejects.toThrow('Hanya Owner dan Admin yang memiliki akses membatalkan (void) transaksi.');
+      ).rejects.toThrow('Persetujuan Owner');
+
+      // Kasir dengan PIN Owner salah -> ditolak
+      await expect(
+        transactionService.voidTransaction(txId, {
+          reason: 'Kasir mencoba void',
+          actorUserId: 'kasir-1',
+          ownerPin: '000000',
+        })
+      ).rejects.toThrow('PIN persetujuan Owner salah');
 
       const tx = await db.transactions.get(txId);
       expect(tx?.status).toBe('ok');
@@ -393,7 +401,7 @@ describe('TransactionService (Transaksi Inti, Snapshot, Void & Hutang)', () => {
           actorUserId: 'admin-1',
           adminPin: '999999', // PIN salah
         })
-      ).rejects.toThrow('PIN konfirmasi Owner/Admin salah. Pembatalan transaksi ditolak.');
+      ).rejects.toThrow('PIN konfirmasi salah');
 
       const tx = await db.transactions.get(txId);
       expect(tx?.status).toBe('ok');

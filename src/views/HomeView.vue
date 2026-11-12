@@ -10,14 +10,14 @@
           </span>
         </div>
         <router-link
-          v-if="!activeShift"
+          v-if="!activeShift && !authStore.isOwner"
           to="/shifts/open"
           class="btn-open-shift"
         >
           Buka Shift
         </router-link>
         <router-link
-          v-else
+          v-else-if="activeShift"
           to="/shifts/close"
           class="btn-close-shift"
         >
@@ -50,8 +50,8 @@
         </div>
       </div>
 
-      <!-- Aksi Cepat -->
-      <div class="quick-actions-section">
+      <!-- Aksi Cepat (disembunyikan untuk Owner) -->
+      <div v-if="!authStore.isOwner" class="quick-actions-section">
         <h3 class="section-title">Aksi Cepat</h3>
         <div class="quick-actions-grid">
           <router-link to="/transactions/add?type=transfer" class="quick-action-item">
@@ -123,7 +123,11 @@
           description="Shift ini belum ada transaksi tercatat. Ketuk tombol + untuk mencatat transaksi baru."
         >
           <template #action>
-            <router-link to="/transactions/add" class="btn-sm-primary">
+            <router-link
+              v-if="!authStore.isOwner"
+              to="/transactions/add"
+              class="btn-sm-primary"
+            >
               Catat Transaksi Pertama
             </router-link>
           </template>
@@ -215,9 +219,12 @@ onMounted(async () => {
   accountList.value = await db.accounts.filter((a) => a.isActive).toArray();
   // Muat shift aktif
   if (authStore.currentUser) {
-    const shift = await db.shifts
+    let shift = await db.shifts
       .where({ userId: authStore.currentUser.id, status: 'open' })
       .first();
+    if (!shift && authStore.isOwner) {
+      shift = await db.shifts.where('status').equals('open').first();
+    }
     activeShift.value = shift || null;
   }
 });

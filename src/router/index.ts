@@ -30,7 +30,7 @@ const routes: RouteRecordRaw[] = [
     path: '/transactions/add',
     name: 'AddTransaction',
     component: () => import('../views/AddTransactionView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, roles: ['admin', 'kepala_kasir', 'kasir'] },
   },
   {
     path: '/transactions/:id',
@@ -120,7 +120,7 @@ const routes: RouteRecordRaw[] = [
     path: '/shifts/open',
     name: 'ShiftOpen',
     component: () => import('../views/ShiftOpenView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, roles: ['admin', 'kepala_kasir', 'kasir'] },
   },
   {
     path: '/shifts/close',

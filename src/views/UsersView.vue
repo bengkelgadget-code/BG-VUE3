@@ -87,6 +87,7 @@
               <label class="form-label">Peran / Role</label>
               <select v-model="addForm.role" class="form-select" required>
                 <option value="kasir">Kasir</option>
+                <option value="kepala_kasir">Kepala Kasir</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -149,6 +150,7 @@
               <label class="form-label">Peran / Role</label>
               <select v-model="editForm.role" class="form-select" required>
                 <option value="kasir">Kasir</option>
+                <option value="kepala_kasir">Kepala Kasir</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -239,14 +241,14 @@ const targetUser = ref<User | null>(null);
 
 const addForm = ref({
   name: '',
-  role: 'kasir' as 'admin' | 'kasir',
+  role: 'kasir' as 'admin' | 'kepala_kasir' | 'kasir',
   pin: '',
   confirmPin: '',
 });
 
 const editForm = ref({
   name: '',
-  role: 'kasir' as 'admin' | 'kasir',
+  role: 'kasir' as 'admin' | 'kepala_kasir' | 'kasir',
 });
 
 const resetForm = ref({
@@ -270,6 +272,7 @@ function showError(msg: string) {
 function roleLabel(role: UserRole): string {
   if (role === 'owner') return 'Owner';
   if (role === 'admin') return 'Admin';
+  if (role === 'kepala_kasir') return 'Kepala Kasir';
   if (role === 'kasir') return 'Kasir';
   return role;
 }
@@ -558,6 +561,10 @@ onMounted(async () => {
 .role-admin {
   background: rgba(16, 185, 129, 0.12);
   color: #059669;
+}
+.role-kepala_kasir {
+  background: rgba(147, 51, 234, 0.12);
+  color: #9333ea;
 }
 .role-kasir {
   background: rgba(245, 158, 11, 0.12);

@@ -48,6 +48,25 @@ jobs:
       - name: Patch Capgo Native Plugin
         run: node scripts/patch-capgo.js
 
+      - name: Verify Capgo Native Patch
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pluginFile = 'node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/CapacitorUpdaterPlugin.java';
+            const updaterFile = 'node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/CapgoUpdater.java';
+            const pluginContent = fs.readFileSync(pluginFile, 'utf8');
+            const updaterContent = fs.readFileSync(updaterFile, 'utf8');
+            if (pluginContent.includes('Checksum required')) {
+              console.error('CapacitorUpdaterPlugin.java still contains Checksum required!');
+              process.exit(1);
+            }
+            if (updaterContent.includes('Checksum required')) {
+              console.error('CapgoUpdater.java still contains Checksum required!');
+              process.exit(1);
+            }
+            console.log('Capgo native patches verified successfully.');
+          "
+
       - name: Run Typecheck
         run: npm run typecheck
 
@@ -185,10 +204,12 @@ jobs:
             v.download_url = '$APK_DOWNLOAD_URL';
             v.bundle_url = '$BUNDLE_DOWNLOAD_URL';
             v.bundle_version = String(Date.now());
-            if (fs.existsSync('update.zip')) {
-              const zipBuffer = fs.readFileSync('update.zip');
-              v.bundle_checksum = crypto.createHash('sha256').update(zipBuffer).digest('hex');
+            if (!fs.existsSync('update.zip')) {
+              console.error('ERROR: update.zip tidak ditemukan saat bot release dijalankan!');
+              process.exit(1);
             }
+            const zipBuffer = fs.readFileSync('update.zip');
+            v.bundle_checksum = crypto.createHash('sha256').update(zipBuffer).digest('hex');
             fs.writeFileSync('version.json', JSON.stringify(v, null, 2) + '\n');
           "
           git config --global user.name "github-actions[bot]"

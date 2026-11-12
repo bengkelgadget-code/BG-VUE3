@@ -27,7 +27,7 @@
         :description="selectedFilter === 'all' ? 'Shift ini belum ada transaksi tercatat.' : 'Tidak ada transaksi dengan filter ini.'"
       >
         <template #action>
-          <router-link to="/transactions/add" class="btn-primary">
+          <router-link v-if="!authStore.isOwner" to="/transactions/add" class="btn-primary">
             + Catat Transaksi Baru
           </router-link>
         </template>
@@ -67,11 +67,13 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import AppScaffold from '../components/AppScaffold.vue';
 import EmptyState from '../components/EmptyState.vue';
+import { useAuthStore } from '../stores/authStore';
 import { db } from '../db/database';
 import type { Transaction } from '../db/types';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
 
 const router = useRouter();
+const authStore = useAuthStore();
 const transactions = ref<Transaction[]>([]);
 const selectedFilter = ref<string>('all');
 

@@ -36,6 +36,22 @@ export interface TransactionInput {
   cartItems?: CartItemInput[]; // keranjang multi-item
 }
 
+export interface EditTransactionInput {
+  nominal?: number;
+  fee?: number;
+  note?: string;
+  customerName?: string;
+  layanan?: string;
+  date?: number;
+  userId?: string;
+  status?: string;
+}
+
+export interface EditTransactionOptions {
+  actorUserId: string;
+  ownerPin?: string;
+}
+
 export class TransactionService {
   /**
    * Simpan transaksi secara atomik di database:
@@ -284,14 +300,23 @@ export class TransactionService {
   /**
    * Batalkan transaksi (VOID) — BUKAN HAPUS.
    * Mengembalikan mutasi saldo (multiplier -1) dan mengembalikan stok fisik (+qty).
+   * Matriks hak:
+   * - Owner / Admin / Kepala Kasir: Ya, langsung (verifikasi PIN sendiri).
+   * - Kasir: Hanya bila diapprove oleh Owner (verifikasi PIN Owner).
    */
   public async voidTransaction(
     transactionId: string,
-    opts: { reason: string; actorUserId: string; adminPin?: string }
+    opts: {
+      reason: string;
+      actorUserId: string;
+      pin?: string;
+      adminPin?: string;
+      ownerPin?: string;
+    }
   ): Promise<void> {
     const actor = await db.users.get(opts.actorUserId);
-    if (!actor || (actor.role !== 'owner' && actor.role !== 'admin')) {
-      throw new AppError('Hanya Owner dan Admin yang memiliki akses membatalkan (void) transaksi.');
+    if (!actor) {
+      throw new AppError('Pengguna tidak ditemukan.');
     }
 
     const trimmedReason = opts.reason?.trim();
@@ -299,13 +324,33 @@ export class TransactionService {
       throw new AppError('Alasan pembatalan (void) transaksi wajib diisi minimal 3 karakter.');
     }
 
-    if (!opts.adminPin || !opts.adminPin.trim()) {
-      throw new AppError('PIN konfirmasi Owner/Admin wajib diisi.');
-    }
+    let approvedBy: string | undefined = undefined;
 
-    const isPinValid = await authService.verifyPin(opts.actorUserId, opts.adminPin.trim());
-    if (!isPinValid) {
-      throw new AppError('PIN konfirmasi Owner/Admin salah. Pembatalan transaksi ditolak.');
+    if (actor.role === 'kasir') {
+      const pinToVerify = (opts.ownerPin || opts.adminPin || opts.pin || '').trim();
+      if (!pinToVerify) {
+        throw new AppError('Persetujuan Owner (PIN Owner) wajib diisi untuk pembatalan oleh Kasir.');
+      }
+      const owner = await db.users.where('role').equals('owner').first();
+      if (!owner) {
+        throw new AppError('Akun Owner tidak ditemukan di sistem.');
+      }
+      const isOwnerPinValid = await authService.verifyPin(owner.id, pinToVerify);
+      if (!isOwnerPinValid) {
+        throw new AppError('PIN persetujuan Owner salah. Pembatalan transaksi ditolak.');
+      }
+      approvedBy = owner.id;
+    } else if (actor.role === 'owner' || actor.role === 'admin' || actor.role === 'kepala_kasir') {
+      const pinToVerify = (opts.pin || opts.adminPin || '').trim();
+      if (!pinToVerify) {
+        throw new AppError('PIN konfirmasi wajib diisi.');
+      }
+      const isPinValid = await authService.verifyPin(opts.actorUserId, pinToVerify);
+      if (!isPinValid) {
+        throw new AppError('PIN konfirmasi salah. Pembatalan transaksi ditolak.');
+      }
+    } else {
+      throw new AppError('Role tidak memiliki hak untuk membatalkan (void) transaksi.');
     }
 
     const tx = await db.transactions.get(transactionId);
@@ -388,6 +433,209 @@ export class TransactionService {
             layanan: tx.layanan,
             nominal: tx.nominal,
             alasan: trimmedReason,
+            ...(approvedBy ? { approvedBy } : {}),
+          }),
+          createdAt: now,
+        });
+      }
+    );
+  }
+
+  /**
+   * Koreksi / Edit data transaksi yang sudah diinput.
+   * Field yang boleh diubah: nominal, fee, note, customerName.
+   * Field terlarang: layanan, date, userId, status.
+   * Transaksi void tidak boleh diedit.
+   */
+  public async editTransaction(
+    transactionId: string,
+    input: EditTransactionInput,
+    opts: EditTransactionOptions
+  ): Promise<void> {
+    const actor = await db.users.get(opts.actorUserId);
+    if (!actor) {
+      throw new AppError('Pengguna tidak ditemukan.');
+    }
+
+    let approvedBy: string | undefined = undefined;
+
+    if (actor.role === 'kasir') {
+      const pinToVerify = (opts.ownerPin || '').trim();
+      if (!pinToVerify) {
+        throw new AppError('Persetujuan Owner (PIN Owner) wajib diisi untuk koreksi oleh Kasir.');
+      }
+      const owner = await db.users.where('role').equals('owner').first();
+      if (!owner) {
+        throw new AppError('Akun Owner tidak ditemukan di sistem.');
+      }
+      const isOwnerPinValid = await authService.verifyPin(owner.id, pinToVerify);
+      if (!isOwnerPinValid) {
+        throw new AppError('PIN persetujuan Owner salah. Koreksi transaksi ditolak.');
+      }
+      approvedBy = owner.id;
+    } else if (actor.role !== 'owner' && actor.role !== 'admin' && actor.role !== 'kepala_kasir') {
+      throw new AppError('Role tidak memiliki hak untuk mengedit transaksi.');
+    }
+
+    const tx = await db.transactions.get(transactionId);
+    if (!tx) {
+      throw new AppError('Transaksi tidak ditemukan.');
+    }
+
+    if (tx.status === 'void') {
+      throw new AppError('Transaksi yang sudah dibatalkan (void) tidak dapat diedit.');
+    }
+
+    // Deteksi upaya modifikasi field terlarang
+    if (input.layanan !== undefined && input.layanan !== tx.layanan) {
+      throw new AppError('Jenis layanan transaksi tidak dapat diubah.');
+    }
+    if (input.date !== undefined && input.date !== tx.date) {
+      throw new AppError('Tanggal transaksi tidak dapat diubah.');
+    }
+    if (input.userId !== undefined && input.userId !== tx.userId) {
+      throw new AppError('Petugas pembuat transaksi tidak dapat diubah.');
+    }
+    if (input.status !== undefined && input.status !== tx.status) {
+      throw new AppError('Status transaksi tidak dapat diubah melalui menu edit.');
+    }
+
+    const newNominal = input.nominal !== undefined ? input.nominal : tx.nominal;
+    if (newNominal <= 0 || !Number.isFinite(newNominal)) {
+      throw new AppError('Nominal transaksi harus berupa angka lebih dari 0.');
+    }
+
+    const newFee = input.fee !== undefined ? input.fee : tx.fee;
+    if (newFee < 0 || !Number.isFinite(newFee)) {
+      throw new AppError('Biaya admin tidak boleh negatif.');
+    }
+
+    const newNote = input.note !== undefined ? input.note.trim() : (tx.note || '');
+
+    const now = Date.now();
+    const isAmountChanged = newNominal !== tx.nominal || newFee !== tx.fee;
+
+    await db.transaction(
+      'rw',
+      [
+        db.transactions,
+        db.transactionItems,
+        db.accountLedger,
+        db.customers,
+        db.auditLogs,
+      ],
+      async () => {
+        // 1. Update customer name bila ada perubahan
+        let oldCustomerName: string | undefined = undefined;
+        let updatedCustomerName: string | undefined = undefined;
+        if (input.customerName !== undefined && tx.customerId) {
+          const cust = await db.customers.get(tx.customerId);
+          if (cust) {
+            oldCustomerName = cust.name;
+            const trimmedCustName = input.customerName.trim();
+            if (trimmedCustName && trimmedCustName !== cust.name) {
+              await db.customers.update(tx.customerId, { name: trimmedCustName });
+              updatedCustomerName = trimmedCustName;
+            }
+          }
+        }
+
+        // 2. Balik saldo lama dan terapkan saldo baru bila nominal / fee berubah
+        if (isAmountChanged) {
+          // A. Balik ledger lama
+          const existingLedgers = await db.accountLedger.where('transactionId').equals(transactionId).toArray();
+          if (existingLedgers.length > 0) {
+            const reverseRecords = existingLedgers.map((l) => ({
+              id: uuidv4(),
+              accountId: l.accountId,
+              transactionId,
+              kind: l.kind,
+              delta: -l.delta,
+              note: `Koreksi: balik transaksi lama`,
+              createdAt: now,
+            }));
+            await db.accountLedger.bulkAdd(reverseRecords);
+          }
+
+          // B. Hitung modal dan hargaJual
+          const items = await db.transactionItems.where('transactionId').equals(transactionId).toArray();
+          let modal = 0;
+          let hargaJual = newNominal;
+          if (items.length > 0) {
+            modal = items.reduce((sum, it) => sum + (it.modalSnapshot * it.qty), 0);
+            hargaJual = items.reduce((sum, it) => sum + (it.hargaJualSnapshot * it.qty), 0);
+          }
+
+          // C. Hitung deltas baru
+          let paymentAccountId = tx.accountId;
+          if (!paymentAccountId) {
+            const kasAccount = await db.accounts.where('type').equals('kas').first();
+            paymentAccountId = kasAccount?.id || '';
+          }
+
+          const newDeltas = balanceService.computeDeltas({
+            layanan: tx.layanan,
+            sourceAccountId: tx.sourceAccountId,
+            destAccountId: tx.destAccountId,
+            paymentAccountId,
+            nominal: newNominal,
+            modal,
+            hargaJual,
+            fee: newFee,
+            feePaidBy: tx.feePaidBy,
+          });
+
+          // D. Terapkan deltas baru
+          if (tx.paymentStatus === 'hutang') {
+            const sourceDeltas = newDeltas.filter((d) => d.accountId === tx.sourceAccountId);
+            if (sourceDeltas.length > 0) {
+              await balanceService.applyDeltas({ transactionId, deltas: sourceDeltas, multiplier: 1 });
+            }
+            if (tx.customerId) {
+              const customer = await db.customers.get(tx.customerId);
+              if (customer) {
+                const oldDebt = tx.nominal + (tx.feePaidBy === 'cash' ? tx.fee : 0);
+                const newDebt = newNominal + (tx.feePaidBy === 'cash' ? newFee : 0);
+                await db.customers.update(tx.customerId, {
+                  balanceHutang: Math.max(0, customer.balanceHutang - oldDebt + newDebt),
+                });
+              }
+            }
+          } else {
+            await balanceService.applyDeltas({ transactionId, deltas: newDeltas, multiplier: 1 });
+          }
+        }
+
+        // 3. Update data transaksi
+        await db.transactions.update(transactionId, {
+          nominal: newNominal,
+          fee: newFee,
+          note: newNote,
+          feeManualOverride: input.fee !== undefined ? true : tx.feeManualOverride,
+          updatedAt: now,
+        });
+
+        // 4. Jejak audit
+        await db.auditLogs.add({
+          id: uuidv4(),
+          actorUserId: opts.actorUserId,
+          action: 'edit_transaksi',
+          entityType: 'transaction',
+          entityId: transactionId,
+          detail: JSON.stringify({
+            old: {
+              nominal: tx.nominal,
+              fee: tx.fee,
+              note: tx.note,
+              customerName: oldCustomerName,
+            },
+            new: {
+              nominal: newNominal,
+              fee: newFee,
+              note: newNote,
+              customerName: updatedCustomerName ?? oldCustomerName,
+            },
+            ...(approvedBy ? { approvedBy } : {}),
           }),
           createdAt: now,
         });

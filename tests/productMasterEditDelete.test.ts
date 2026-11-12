@@ -149,6 +149,83 @@ describe('Master Produk: Fungsi Edit dan Hapus', () => {
       await expect(
         productService.updateProduct(prodId, { hargaJual: -500 }, { actorUserId: ownerUser.id })
       ).rejects.toThrow('Harga jual produk harus bilangan bulat positif.');
+
+      await expect(
+        productService.updateProduct(prodId, { stockMin: -1 }, { actorUserId: ownerUser.id })
+      ).rejects.toThrow('Batas minimum stok harus bilangan bulat positif.');
+    });
+
+    it('updateProduct mempertahankan denomination, externalProductRef, barcode, location (H6)', async () => {
+      const prodId = 'prod-preservasi-1';
+      await db.products.add({
+        id: prodId,
+        name: 'Pulsa 50k Terkunci',
+        category: 'pulsa',
+        operator: 'Indosat',
+        denomination: '50.000',
+        externalProductRef: 'REF-INDO-50',
+        barcode: '8991234567890',
+        location: 'Rak Depan',
+        modal: 49000,
+        hargaJual: 52000,
+        stock: null,
+        stockMin: 0,
+        isActive: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      await productService.updateProduct(
+        prodId,
+        {
+          name: 'Pulsa 50k Diperbarui',
+          operator: 'Indosat Ooredoo',
+          modal: 49500,
+          hargaJual: 53000,
+        },
+        { actorUserId: ownerUser.id }
+      );
+
+      const prod = await productService.getProduct(prodId);
+      expect(prod?.name).toBe('Pulsa 50k Diperbarui');
+      expect(prod?.operator).toBe('Indosat Ooredoo');
+      expect(prod?.denomination).toBe('50.000');
+      expect(prod?.externalProductRef).toBe('REF-INDO-50');
+      expect(prod?.barcode).toBe('8991234567890');
+      expect(prod?.location).toBe('Rak Depan');
+    });
+
+    it('updateProduct mencatat audit perubahan kategori, operator, stok, dan stockMin (H4)', async () => {
+      const prodId = await productService.addProduct(
+        {
+          name: 'Barang Audit',
+          category: 'voucher',
+          operator: 'XL',
+          modal: 10000,
+          hargaJual: 12000,
+          stock: 5,
+          stockMin: 2,
+          isActive: true,
+        },
+        { actorUserId: ownerUser.id }
+      );
+
+      await productService.updateProduct(
+        prodId,
+        {
+          category: 'perdana',
+          operator: 'Axis',
+          stock: 8,
+          stockMin: 4,
+        },
+        { actorUserId: ownerUser.id }
+      );
+
+      const logs = await db.auditLogs.where('entityId').equals(prodId).toArray();
+      expect(logs.some((l) => l.action === 'ubah_kategori_produk')).toBe(true);
+      expect(logs.some((l) => l.action === 'ubah_operator_produk')).toBe(true);
+      expect(logs.some((l) => l.action === 'ubah_stok_master')).toBe(true);
+      expect(logs.some((l) => l.action === 'ubah_stok_min_master')).toBe(true);
     });
 
     it('updateProduct menolak akses jika dilakukan oleh kasir', async () => {
@@ -298,13 +375,15 @@ describe('Master Produk: Fungsi Edit dan Hapus', () => {
       expect(wrapper.find('.page-title').text()).toBe('Edit Produk Master');
       expect((wrapper.find('#product-name').element as HTMLInputElement).value).toBe('Perdana Smartfren 30GB');
       expect((wrapper.find('#product-category').element as HTMLSelectElement).value).toBe('perdana');
+      expect((wrapper.find('#product-operator').element as HTMLInputElement).value).toBe('Smartfren');
       expect((wrapper.find('#product-modal').element as HTMLInputElement).value).toBe('40.000');
       expect((wrapper.find('#product-harga-jual').element as HTMLInputElement).value).toBe('50.000');
       expect((wrapper.find('#product-stock').element as HTMLInputElement).value).toBe('15');
       expect((wrapper.find('#product-stock-min').element as HTMLInputElement).value).toBe('3');
 
-      // Tombol Update dan Hapus tampil
+      // Tombol Update, Nonaktifkan, dan Hapus tampil
       expect(wrapper.find('[data-testid="btn-update-product"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="btn-deactivate-product"]').exists()).toBe(true);
       expect(wrapper.find('[data-testid="btn-delete-product"]').exists()).toBe(true);
       expect(wrapper.find('[data-testid="btn-save-product"]').exists()).toBe(false);
     });
