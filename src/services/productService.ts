@@ -263,9 +263,49 @@ export class ProductService {
 
   public async deactivateProduct(id: string, opts: { actorUserId: string }): Promise<void> {
     await this.checkAdminAccess(opts.actorUserId);
+
+    const existing = await db.products.get(id);
+    if (!existing) {
+      throw new AppError('Produk tidak ditemukan.');
+    }
+
     await db.products.update(id, {
       isActive: false,
       updatedAt: Date.now(),
+    });
+
+    await db.auditLogs.add({
+      id: uuidv4(),
+      actorUserId: opts.actorUserId,
+      action: 'nonaktifkan_produk_master',
+      entityType: 'product',
+      entityId: id,
+      detail: JSON.stringify({ name: existing.name, category: existing.category }),
+      createdAt: Date.now(),
+    });
+  }
+
+  public async activateProduct(id: string, opts: { actorUserId: string }): Promise<void> {
+    await this.checkAdminAccess(opts.actorUserId);
+
+    const existing = await db.products.get(id);
+    if (!existing) {
+      throw new AppError('Produk tidak ditemukan.');
+    }
+
+    await db.products.update(id, {
+      isActive: true,
+      updatedAt: Date.now(),
+    });
+
+    await db.auditLogs.add({
+      id: uuidv4(),
+      actorUserId: opts.actorUserId,
+      action: 'aktifkan_produk_master',
+      entityType: 'product',
+      entityId: id,
+      detail: JSON.stringify({ name: existing.name, category: existing.category }),
+      createdAt: Date.now(),
     });
   }
 

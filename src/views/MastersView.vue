@@ -26,6 +26,19 @@
         </button>
       </div>
 
+      <!-- Filter Tampilkan Nonaktif -->
+      <div class="filter-controls">
+        <label class="filter-inactive-label" data-testid="filter-inactive-label">
+          <input
+            v-model="showInactive"
+            type="checkbox"
+            data-testid="toggle-show-inactive"
+            class="checkbox-inactive"
+          />
+          <span>Tampilkan Produk Nonaktif</span>
+        </label>
+      </div>
+
       <EmptyState
         v-if="filteredProducts.length === 0"
         title="Belum Ada Produk Master"
@@ -43,6 +56,7 @@
           v-for="p in filteredProducts"
           :key="p.id"
           class="product-card"
+          :class="{ 'product-inactive': p.isActive === false }"
           role="button"
           tabindex="0"
           :title="`Klik untuk edit ${p.name}`"
@@ -51,7 +65,10 @@
           @keydown.enter="handleCardClick(p.id)"
         >
           <div class="prod-left">
-            <span class="prod-name">{{ p.name }}</span>
+            <div class="prod-name-row">
+              <span class="prod-name">{{ p.name }}</span>
+              <span v-if="p.isActive === false" class="badge-inactive" data-testid="badge-inactive">NONAKTIF</span>
+            </div>
             <span class="prod-cat">{{ p.category.toUpperCase() }} {{ p.operator ? `• ${p.operator}` : '' }}</span>
             <span v-if="p.stock !== null" class="prod-stock">
               Stok: <strong>{{ p.stock }}</strong> pcs (Min: {{ p.stockMin }})
@@ -64,7 +81,17 @@
               <span class="prod-modal money-display">Modal: {{ formatRupiah(p.modal) }}</span>
               <span class="prod-laba money-display">Laba: {{ formatRupiah(p.hargaJual - p.modal) }}</span>
             </div>
-            <ChevronRight class="prod-arrow" />
+            <button
+              v-if="p.isActive === false"
+              type="button"
+              class="btn-activate-card"
+              :data-testid="`btn-activate-${p.id}`"
+              title="Aktifkan produk ini"
+              @click.stop="handleActivateProduct(p.id)"
+            >
+              Aktifkan
+            </button>
+            <ChevronRight v-else class="prod-arrow" />
           </div>
         </div>
       </div>
@@ -80,11 +107,30 @@ import AppScaffold from '../components/AppScaffold.vue';
 import EmptyState from '../components/EmptyState.vue';
 import { db } from '../db/database';
 import { formatRupiah } from '../utils/format';
+import { productService } from '../services/productService';
+import { useAuthStore } from '../stores/authStore';
 import type { Product } from '../db/types';
 
 const router = useRouter();
+const authStore = useAuthStore();
 const products = ref<Product[]>([]);
 const selectedCategory = ref<string>('all');
+const showInactive = ref<boolean>(false);
+
+async function loadData() {
+  products.value = await db.products.toArray();
+}
+
+async function handleActivateProduct(id: string) {
+  try {
+    await productService.activateProduct(id, {
+      actorUserId: authStore.currentUser?.id || 'system',
+    });
+    await loadData();
+  } catch (err) {
+    console.error('Gagal mengaktifkan produk:', err);
+  }
+}
 
 function handleCardClick(productId: string) {
   router.push(`/masters/product/${productId}/edit`);
@@ -101,12 +147,15 @@ const categories = [
 ];
 
 onMounted(async () => {
-  products.value = await db.products.toArray();
+  await loadData();
 });
 
 const filteredProducts = computed(() => {
-  if (selectedCategory.value === 'all') return products.value;
-  return products.value.filter((p) => p.category === selectedCategory.value);
+  return products.value.filter((p) => {
+    const matchesCategory = selectedCategory.value === 'all' || p.category === selectedCategory.value;
+    const matchesActive = showInactive.value ? true : p.isActive !== false;
+    return matchesCategory && matchesActive;
+  });
 });
 </script>
 
@@ -167,6 +216,28 @@ const filteredProducts = computed(() => {
   background: var(--color-primary);
   color: var(--color-white);
   border-color: var(--color-primary);
+}
+
+.filter-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: -4px;
+}
+
+.filter-inactive-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-inactive {
+  cursor: pointer;
+  accent-color: var(--color-primary);
 }
 
 .product-list {
@@ -265,6 +336,45 @@ const filteredProducts = computed(() => {
   font-size: 12px;
   font-weight: 700;
   color: var(--color-income);
+}
+
+.prod-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge-inactive {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover, #e2e8f0);
+  color: var(--text-muted, #64748b);
+  letter-spacing: 0.5px;
+}
+
+.product-inactive {
+  opacity: 0.75;
+  background: var(--bg-secondary, #f8fafc);
+  border: 1px dashed var(--border-color);
+}
+
+.btn-activate-card {
+  padding: 6px 12px;
+  background: var(--color-success, #10b981);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-chip);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.btn-activate-card:hover {
+  opacity: 0.9;
 }
 
 .btn-primary {

@@ -327,7 +327,7 @@ export class TransactionService {
     let approvedBy: string | undefined = undefined;
 
     if (actor.role === 'kasir') {
-      const pinToVerify = (opts.ownerPin || opts.adminPin || opts.pin || '').trim();
+      const pinToVerify = (opts.ownerPin || '').trim();
       if (!pinToVerify) {
         throw new AppError('Persetujuan Owner (PIN Owner) wajib diisi untuk pembatalan oleh Kasir.');
       }
@@ -340,7 +340,7 @@ export class TransactionService {
         throw new AppError('PIN persetujuan Owner salah. Pembatalan transaksi ditolak.');
       }
       approvedBy = owner.id;
-    } else if (actor.role === 'owner' || actor.role === 'admin' || actor.role === 'kepala_kasir') {
+    } else if (authService.canVoidTransaction(actor.role)) {
       const pinToVerify = (opts.pin || opts.adminPin || '').trim();
       if (!pinToVerify) {
         throw new AppError('PIN konfirmasi wajib diisi.');
@@ -473,7 +473,7 @@ export class TransactionService {
         throw new AppError('PIN persetujuan Owner salah. Koreksi transaksi ditolak.');
       }
       approvedBy = owner.id;
-    } else if (actor.role !== 'owner' && actor.role !== 'admin' && actor.role !== 'kepala_kasir') {
+    } else if (!authService.canEditTransaction(actor.role)) {
       throw new AppError('Role tidak memiliki hak untuk mengedit transaksi.');
     }
 
@@ -503,6 +503,13 @@ export class TransactionService {
     const newNominal = input.nominal !== undefined ? input.nominal : tx.nominal;
     if (newNominal <= 0 || !Number.isFinite(newNominal)) {
       throw new AppError('Nominal transaksi harus berupa angka lebih dari 0.');
+    }
+
+    if (newNominal !== tx.nominal) {
+      const existingItems = await db.transactionItems.where('transactionId').equals(transactionId).toArray();
+      if (existingItems.length > 1) {
+        throw new AppError('Transaksi multi-item tidak dapat diubah nominalnya. Silakan batalkan (void) dan catat ulang transaksi.');
+      }
     }
 
     const newFee = input.fee !== undefined ? input.fee : tx.fee;
@@ -562,6 +569,14 @@ export class TransactionService {
           let modal = 0;
           let hargaJual = newNominal;
           if (items.length > 0) {
+            if (items.length === 1 && newNominal !== tx.nominal) {
+              const singleItem = items[0];
+              const newPrice = Math.round(newNominal / singleItem.qty);
+              await db.transactionItems.update(singleItem.id, {
+                hargaJualSnapshot: newPrice,
+              });
+              singleItem.hargaJualSnapshot = newPrice;
+            }
             modal = items.reduce((sum, it) => sum + (it.modalSnapshot * it.qty), 0);
             hargaJual = items.reduce((sum, it) => sum + (it.hargaJualSnapshot * it.qty), 0);
           }

@@ -6,7 +6,7 @@
         <router-link v-if="!activeShift && !authStore.isOwner" to="/shifts/open" class="btn-open">
           Buka Shift Baru
         </router-link>
-        <router-link v-else-if="activeShift" to="/shifts/close" class="btn-close">
+        <router-link v-else-if="activeShift && !authStore.isOwner" to="/shifts/close" class="btn-close">
           Tutup Shift Aktif
         </router-link>
       </div>
@@ -27,7 +27,7 @@
             <span class="s-d-val money-display">{{ formatRupiah(activeShift.kasAwalFisik) }}</span>
           </div>
         </div>
-        <router-link to="/shifts/close" class="btn-tutup-full">
+        <router-link v-if="!authStore.isOwner" to="/shifts/close" class="btn-tutup-full">
           Minta Tutup Shift & Hitung Fisik
         </router-link>
       </div>

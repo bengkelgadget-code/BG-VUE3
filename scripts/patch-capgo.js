@@ -13,6 +13,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import process from 'node:process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -83,14 +84,13 @@ if (fs.existsSync(updaterJavaPath)) {
   let modified = false;
 
   // A. Patch requireBundleChecksum method: jangan lempar IOException bila checksum kosong
-  const targetRequireMethod = /private\s+void\s+requireBundleChecksum\s*\(\s*final\s+String\s+checksum\s*\)\s*throws\s+IOException\s*\{[\s\S]*?throw\s+new\s+IOException\("Checksum required"\);\s*\}/;
+  // HANYA ganti 3 baris di dalam blok if tanpa menyentuh kurung sama sekali
+  const targetRequireMethod = /logger\.error\("No checksum provided"\);\s*this\.sendStats\("checksum_required"\);\s*throw\s+new\s+IOException\("Checksum required"\);/;
   if (targetRequireMethod.test(content)) {
-    content = content.replace(targetRequireMethod, `private void requireBundleChecksum(final String checksum) throws IOException {
-        if (checksum == null || checksum.isEmpty()) {
-            logger.info("No checksum provided, skipping checksum verification");
-            return;
-        }
-    }`);
+    content = content.replace(
+      targetRequireMethod,
+      'logger.info("No checksum provided, skipping checksum verification");\n            return;'
+    );
     modified = true;
     console.log('[patch-capgo] Patched requireBundleChecksum() in CapgoUpdater.java.');
   }
@@ -133,3 +133,23 @@ if (fs.existsSync(updaterJavaPath)) {
 } else {
   console.log('[patch-capgo] CapgoUpdater.java not found (node_modules not ready).');
 }
+
+// ---------------------------------------------------------
+// 3. Pengaman Keseimbangan Kurung (Wajib untuk Plugin & Updater)
+// ---------------------------------------------------------
+function verifyBraceBalance(filePath, fileName) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+  const fileContent = fs.readFileSync(filePath, 'utf8');
+  const openCount = (fileContent.match(/\{/g) || []).length;
+  const closeCount = (fileContent.match(/\}/g) || []).length;
+  console.log(`[patch-capgo] Verifikasi kurung ${fileName}: { = ${openCount}, } = ${closeCount}`);
+  if (openCount !== closeCount) {
+    console.error(`[patch-capgo] FATAL: Keseimbangan kurung rusak di ${fileName}! { = ${openCount}, } = ${closeCount} (selisih: ${openCount - closeCount}).`);
+    process.exit(1);
+  }
+}
+
+verifyBraceBalance(pluginJavaPath, 'CapacitorUpdaterPlugin.java');
+verifyBraceBalance(updaterJavaPath, 'CapgoUpdater.java');

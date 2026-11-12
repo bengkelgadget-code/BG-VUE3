@@ -64,8 +64,27 @@ jobs:
               console.error('CapgoUpdater.java still contains Checksum required!');
               process.exit(1);
             }
-            console.log('Capgo native patches verified successfully.');
+            const pOpen = (pluginContent.match(/\{/g) || []).length;
+            const pClose = (pluginContent.match(/\}/g) || []).length;
+            if (pOpen !== pClose) {
+              console.error('CapacitorUpdaterPlugin.java braces unbalanced! {=' + pOpen + ', }=' + pClose);
+              process.exit(1);
+            }
+            const uOpen = (updaterContent.match(/\{/g) || []).length;
+            const uClose = (updaterContent.match(/\}/g) || []).length;
+            if (uOpen !== uClose) {
+              console.error('CapgoUpdater.java braces unbalanced! {=' + uOpen + ', }=' + uClose);
+              process.exit(1);
+            }
+            console.log('Capgo native patches and brace balances verified successfully.');
           "
+          # Cek sintaks Java pada CapgoUpdater.java untuk memastikan tidak ada error parse
+          JAVAC_OUT=$(javac -encoding UTF-8 "node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/CapgoUpdater.java" 2>&1 || true)
+          if echo "$JAVAC_OUT" | grep -E "class, interface, enum, or record expected|reached end of file while parsing|unnamed class"; then
+            echo "::error::Parse error terdeteksi pada CapgoUpdater.java hasil patch!"
+            exit 1
+          fi
+          echo "Verifikasi sintaks Java CapgoUpdater.java lolos (tidak ada error parse)."
 
       - name: Run Typecheck
         run: npm run typecheck

@@ -14,6 +14,12 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => currentUser.value?.role === 'admin' || currentUser.value?.role === 'owner');
   const isKepalaKasir = computed(() => currentUser.value?.role === 'kepala_kasir');
   const isKasir = computed(() => currentUser.value?.role === 'kasir');
+  const canEditTransaction = computed(() => {
+    return currentUser.value ? authService.canEditTransaction(currentUser.value.role) : false;
+  });
+  const canVoidTransaction = computed(() => {
+    return currentUser.value ? authService.canVoidTransaction(currentUser.value.role) : false;
+  });
   const userName = computed(() => currentUser.value?.name || '');
 
   async function checkInit() {
@@ -56,6 +62,8 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isKepalaKasir,
     isKasir,
+    canEditTransaction,
+    canVoidTransaction,
     userName,
     checkInit,
     createOwner,

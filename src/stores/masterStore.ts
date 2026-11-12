@@ -34,6 +34,11 @@ export const useMasterStore = defineStore('master', () => {
     await loadProducts();
   }
 
+  async function activateProduct(id: string, actorUserId: string) {
+    await productService.activateProduct(id, { actorUserId });
+    await loadProducts();
+  }
+
   async function loadFeeRules(layanan?: string) {
     isLoading.value = true;
     try {
@@ -69,6 +74,7 @@ export const useMasterStore = defineStore('master', () => {
     addProduct,
     updateProduct,
     deactivateProduct,
+    activateProduct,
     loadFeeRules,
     addFeeRuleMulti,
     deactivateFeeGroup,

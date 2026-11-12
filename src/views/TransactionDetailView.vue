@@ -336,7 +336,7 @@ const successNotice = ref<string>('');
 
 // Matriks Hak Akses
 const canManageTransaction = computed(() => {
-  return authStore.isOwner || authStore.isAdmin || authStore.isKepalaKasir;
+  return authStore.canEditTransaction;
 });
 
 // Approval State untuk Kasir

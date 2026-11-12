@@ -17,7 +17,7 @@
           Buka Shift
         </router-link>
         <router-link
-          v-else-if="activeShift"
+          v-else-if="activeShift && !authStore.isOwner"
           to="/shifts/close"
           class="btn-close-shift"
         >

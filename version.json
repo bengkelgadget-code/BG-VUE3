@@ -1,11 +1,11 @@
 {
-  "version_code": 19,
+  "version_code": 20,
   "version_name": "0.2.0",
   "download_url": "",
   "bundle_version": "",
-  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b19/update.zip",
+  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b20/update.zip",
   "bundle_checksum": "",
   "min_apk_version_code": 18,
-  "changelog": "Sembunyikan tambah transaksi & buka shift untuk Owner, role Kepala Kasir + approval Owner, perbaikan audit b17/b18",
+  "changelog": "Perbaikan patch Capgo rusak (b19 gagal build), edit nominal transaksi ber-item, tutup shift Owner",
   "force_update": false
 }

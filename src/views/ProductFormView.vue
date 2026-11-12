@@ -209,13 +209,24 @@
           </button>
 
           <button
+            v-if="isProductActive"
             type="button"
             class="btn-deactivate-product"
-            :disabled="isSubmitting || isDeleting"
+            :disabled="isSubmitting || isDeleting || isDeactivating"
             data-testid="btn-deactivate-product"
-            @click="handleDeactivateProduct"
+            @click="showDeactivateConfirm = true"
           >
             <span>Nonaktifkan</span>
+          </button>
+          <button
+            v-else
+            type="button"
+            class="btn-activate-product-form"
+            :disabled="isSubmitting || isDeleting || isActivating"
+            data-testid="btn-activate-product"
+            @click="handleActivateProduct"
+          >
+            <span>{{ isActivating ? 'Mengaktifkan...' : 'Aktifkan Produk' }}</span>
           </button>
 
           <button
@@ -287,6 +298,52 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal Konfirmasi Nonaktifkan Produk -->
+    <div
+      v-if="showDeactivateConfirm"
+      class="modal-overlay"
+      data-testid="deactivate-confirm-modal"
+      @click.self="showDeactivateConfirm = false"
+    >
+      <div class="modal-box">
+        <div class="modal-danger-header">
+          <div class="modal-icon-danger">
+            <AlertTriangle class="icon-warning" />
+          </div>
+          <div>
+            <h3 class="modal-title">Nonaktifkan Produk?</h3>
+            <p class="modal-desc">
+              Produk <strong>"{{ name }}"</strong> tidak akan muncul dalam pilihan transaksi kasir. Anda dapat mengaktifkannya kembali nanti di daftar Master Produk.
+            </p>
+          </div>
+        </div>
+
+        <div v-if="deactivateError" class="error-banner mb-3">
+          {{ deactivateError }}
+        </div>
+
+        <div class="modal-actions">
+          <button
+            type="button"
+            class="btn-modal-cancel"
+            :disabled="isDeactivating"
+            @click="showDeactivateConfirm = false"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            class="btn-modal-danger"
+            :disabled="isDeactivating"
+            data-testid="btn-confirm-deactivate"
+            @click="handleDeactivateProduct"
+          >
+            {{ isDeactivating ? 'Memproses...' : 'Ya, Nonaktifkan' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </AppScaffold>
 </template>
 
@@ -312,6 +369,13 @@ const isEditMode = computed(() => Boolean(productId.value));
 const showDeleteConfirm = ref(false);
 const isDeleting = ref(false);
 const deleteError = ref('');
+
+const showDeactivateConfirm = ref(false);
+const isDeactivating = ref(false);
+const deactivateError = ref('');
+
+const isProductActive = ref(true);
+const isActivating = ref(false);
 
 // Fields form
 const name = ref('');
@@ -455,6 +519,7 @@ async function loadProductData() {
     hargaJual.value = prod.hargaJual;
     stock.value = prod.stock ?? 0;
     stockMin.value = prod.stockMin ?? 2;
+    isProductActive.value = prod.isActive !== false;
   } catch (err: unknown) {
     errorMessage.value = err instanceof Error ? err.message : 'Gagal memuat produk.';
   }
@@ -531,17 +596,43 @@ async function handleDeleteProduct() {
 
 async function handleDeactivateProduct() {
   if (!productId.value) return;
-  errorMessage.value = '';
-  isSubmitting.value = true;
+  deactivateError.value = '';
+  isDeactivating.value = true;
   try {
     await productService.deactivateProduct(productId.value, {
       actorUserId: authStore.currentUser?.id || 'system',
     });
+    showDeactivateConfirm.value = false;
     await router.replace('/masters');
   } catch (err: unknown) {
-    errorMessage.value = err instanceof Error ? err.message : 'Gagal menonaktifkan produk master.';
+    if (err instanceof AppError) {
+      deactivateError.value = err.message;
+    } else {
+      deactivateError.value = err instanceof Error ? err.message : 'Gagal menonaktifkan produk master.';
+    }
   } finally {
-    isSubmitting.value = false;
+    isDeactivating.value = false;
+  }
+}
+
+async function handleActivateProduct() {
+  if (!productId.value) return;
+  errorMessage.value = '';
+  isActivating.value = true;
+  try {
+    await productService.activateProduct(productId.value, {
+      actorUserId: authStore.currentUser?.id || 'system',
+    });
+    isProductActive.value = true;
+    await router.replace('/masters');
+  } catch (err: unknown) {
+    if (err instanceof AppError) {
+      errorMessage.value = err.message;
+    } else {
+      errorMessage.value = err instanceof Error ? err.message : 'Gagal mengaktifkan produk master.';
+    }
+  } finally {
+    isActivating.value = false;
   }
 }
 
@@ -898,6 +989,32 @@ onUnmounted(() => {
 }
 
 .btn-deactivate-product:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-activate-product-form {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-btn);
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--color-success, #10b981);
+  background: var(--color-success, #10b981);
+  color: var(--color-white, #ffffff);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-activate-product-form:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-activate-product-form:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
