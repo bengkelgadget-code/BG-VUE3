@@ -1,5 +1,10 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { mount, flushPromises } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import router from '../src/router';
@@ -111,118 +116,115 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
   });
 
   // --------------------------------------------------------------------------
-  // (a) Tes Script Patch Capgo
+  // (a) Tes Script Patch Capgo — eksekusi script ASLI pada file 7.53.0
+  // (b21-C: jangan duplikasi regex inline — jalankan scripts/patch-capgo.js)
   // --------------------------------------------------------------------------
-  describe('(a) Patch Capgo Regex & Brace Balance Test', () => {
-    const originalCapgoUpdaterSnippet = `package ee.forgr.capacitor_updater;
-import java.io.File;
-import java.io.IOException;
-import java.util.Objects;
+  describe('(a) Patch Capgo — Script Asli pada File 7.53.0', () => {
+    const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+    const FIXTURE_DIR = path.resolve(TEST_DIR, 'fixtures');
+    const JAVA_REL =
+      'node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater';
 
-public class CapgoUpdater {
-    private void requireBundleChecksum(final String checksum) throws IOException {
-        if (checksum == null || checksum.isEmpty()) {
-            logger.error("No checksum provided");
-            this.sendStats("checksum_required");
-            throw new IOException("Checksum required");
-        }
+    function readPristine(fileName: string): string {
+      const filePath = path.join(FIXTURE_DIR, `${fileName}.pristine`);
+      return fs.readFileSync(filePath, 'utf8');
     }
 
-    private void finishDownload(final String id, final String checksumRes, final String sessionKey, final boolean isManifest) throws IOException {
-        if (!isManifest) {
-            String expectedChecksum = Objects.requireNonNullElse(checksumRes, "");
-            this.requireBundleChecksum(expectedChecksum);
-            if (CryptoCipher.isValidSessionKey(sessionKey)) {
-                CryptoCipher.decryptFile(downloaded, publicKey, sessionKey);
-                expectedChecksum = CryptoCipher.decryptChecksum(checksumRes, publicKey);
-            }
-            checksum = CryptoCipher.calcChecksum(downloaded);
-            CryptoCipher.logChecksumInfo("Calculated checksum", checksum);
-            CryptoCipher.logChecksumInfo("Expected checksum", expectedChecksum);
-            if (!expectedChecksum.equals(checksum)) {
-                logger.error("Checksum mismatch");
-                logger.debug("Expected: " + expectedChecksum + ", Got: " + checksum);
-                this.sendStats("checksum_fail");
-                throw new IOException("Checksum failed: " + id);
-            }
-        }
-    }
-
-    static boolean containsPathTraversalSegment(final String relativePath) {
-        return false;
-    }
-}`;
-
-    it('menerapkan regex patch pada isi CapgoUpdater.java asli: kurung seimbang, tidak ada exception, method tetap utuh, dan idempoten', () => {
-      // Pastikan snippet awal memiliki kurung seimbang
-      const initialOpen = (originalCapgoUpdaterSnippet.match(/\{/g) || []).length;
-      const initialClose = (originalCapgoUpdaterSnippet.match(/\}/g) || []).length;
-      expect(initialOpen).toBe(initialClose);
-
-      // Regex A (yang baru) & Regex B
-      const targetRequireMethod = /logger\.error\("No checksum provided"\);\s*this\.sendStats\("checksum_required"\);\s*throw\s+new\s+IOException\("Checksum required"\);/;
-      const targetFinishDownload = /if\s*\(!isManifest\)\s*\{\s*String\s+expectedChecksum\s*=\s*Objects\.requireNonNullElse\(checksumRes,\s*""\);\s*this\.requireBundleChecksum\(expectedChecksum\);\s*if\s*\(CryptoCipher\.isValidSessionKey\(sessionKey\)\)[\s\S]*?throw\s+new\s+IOException\("Checksum failed:\s*"\s*\+\s*id\);\s*\}\s*\}/;
-
-      expect(targetRequireMethod.test(originalCapgoUpdaterSnippet)).toBe(true);
-      expect(targetFinishDownload.test(originalCapgoUpdaterSnippet)).toBe(true);
-
-      // Jalankan patch pertama
-      let patched = originalCapgoUpdaterSnippet.replace(
-        targetRequireMethod,
-        'logger.info("No checksum provided, skipping checksum verification");\n            return;'
+    function buildFakeTree(): { tmpDir: string; javaDir: string; scriptPath: string } {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'patch-capgo-test-'));
+      const javaDir = path.join(tmpDir, JAVA_REL);
+      fs.mkdirSync(javaDir, { recursive: true });
+      fs.writeFileSync(path.join(javaDir, 'CapgoUpdater.java'), readPristine('CapgoUpdater.java'));
+      fs.writeFileSync(
+        path.join(javaDir, 'CapacitorUpdaterPlugin.java'),
+        readPristine('CapacitorUpdaterPlugin.java')
       );
+      const scriptsDir = path.join(tmpDir, 'scripts');
+      fs.mkdirSync(scriptsDir);
+      // Salin script ASLI dari repo — perubahan regex di script ikut teruji.
+      const scriptPath = path.join(scriptsDir, 'patch-capgo.js');
+      fs.copyFileSync(path.resolve(TEST_DIR, '../scripts/patch-capgo.js'), scriptPath);
+      return { tmpDir, javaDir, scriptPath };
+    }
 
-      patched = patched.replace(
-        targetFinishDownload,
-        `if (!isManifest) {
-                String expectedChecksum = Objects.requireNonNullElse(checksumRes, "");
-                this.requireBundleChecksum(expectedChecksum);
+    function runPatchScript(scriptPath: string): { code: number; output: string } {
+      try {
+        const output = execFileSync(process.execPath, [scriptPath], { encoding: 'utf8' });
+        return { code: 0, output };
+      } catch (err) {
+        const e = err as { status?: number; stdout?: string; stderr?: string };
+        return { code: e.status ?? 1, output: `${e.stdout || ''}${e.stderr || ''}` };
+      }
+    }
 
-                if (!expectedChecksum.isEmpty()) {
-                    if (CryptoCipher.isValidSessionKey(sessionKey)) {
-                        CryptoCipher.decryptFile(downloaded, publicKey, sessionKey);
-                        expectedChecksum = CryptoCipher.decryptChecksum(checksumRes, publicKey);
-                    }
-                    checksum = CryptoCipher.calcChecksum(downloaded);
-                    CryptoCipher.logChecksumInfo("Calculated checksum", checksum);
-                    CryptoCipher.logChecksumInfo("Expected checksum", expectedChecksum);
-                    if (!expectedChecksum.equals(checksum)) {
-                        logger.error("Checksum mismatch");
-                        logger.debug("Expected: " + expectedChecksum + ", Got: " + checksum);
-                        this.sendStats("checksum_fail");
-                        throw new IOException("Checksum failed: " + id);
-                    }
-                } else {
-                    logger.info("No checksum provided, skipping checksum verification");
-                }
-            }`
-      );
+    function braceCounts(content: string): { open: number; close: number } {
+      return {
+        open: (content.match(/\{/g) || []).length,
+        close: (content.match(/\}/g) || []).length,
+      };
+    }
 
-      // 1. Kurung seimbang
-      const openCount = (patched.match(/\{/g) || []).length;
-      const closeCount = (patched.match(/\}/g) || []).length;
-      expect(openCount).toBe(closeCount);
+    it('menjalankan script asli pada file 7.53.0 pristine: kurung seimbang, tanpa "Checksum required", idempoten', () => {
+      const { tmpDir, javaDir, scriptPath } = buildFakeTree();
+      try {
+        const updaterPath = path.join(javaDir, 'CapgoUpdater.java');
+        const pluginPath = path.join(javaDir, 'CapacitorUpdaterPlugin.java');
 
-      // 2. Tidak ada throw new IOException("Checksum required") yang tersisa
-      expect(patched.includes('throw new IOException("Checksum required")')).toBe(false);
+        // Sanity: fixture pristine benar-benar asli (angka audit b20)
+        const updaterBefore = fs.readFileSync(updaterPath, 'utf8');
+        const pluginBefore = fs.readFileSync(pluginPath, 'utf8');
+        expect(braceCounts(updaterBefore)).toEqual({ open: 848, close: 848 });
+        expect(braceCounts(pluginBefore)).toEqual({ open: 1290, close: 1290 });
+        expect(updaterBefore.includes('throw new IOException("Checksum required")')).toBe(true);
 
-      // 3. Method requireBundleChecksum masih ada dan berisi return
-      expect(patched.includes('private void requireBundleChecksum(final String checksum) throws IOException {')).toBe(true);
-      expect(patched.includes('logger.info("No checksum provided, skipping checksum verification");')).toBe(true);
-      expect(patched.includes('return;')).toBe(true);
+        // Jalankan patch ke-1
+        const run1 = runPatchScript(scriptPath);
+        expect(run1.code).toBe(0);
+        const updaterPatched = fs.readFileSync(updaterPath, 'utf8');
+        const pluginPatched = fs.readFileSync(pluginPath, 'utf8');
 
-      // 4. Jalankan patch ke-2 kali -> hasil identik (idempoten)
-      let secondPatch = patched;
-      if (targetRequireMethod.test(secondPatch)) {
-        secondPatch = secondPatch.replace(
-          targetRequireMethod,
-          'logger.info("No checksum provided, skipping checksum verification");\n            return;'
+        // 1. Kurung seimbang (CapgoUpdater 850/850 karena regex B menambah blok if/else)
+        expect(braceCounts(updaterPatched)).toEqual({ open: 850, close: 850 });
+        expect(braceCounts(pluginPatched)).toEqual({ open: 1290, close: 1290 });
+
+        // 2. Tidak ada lagi throw "Checksum required"
+        expect(updaterPatched.includes('throw new IOException("Checksum required")')).toBe(false);
+        expect(pluginPatched.includes('throw new IOException("Checksum required")')).toBe(false);
+
+        // 3. Method requireBundleChecksum utuh, berisi logger.info + return
+        expect(updaterPatched).toContain(
+          'private void requireBundleChecksum(final String checksum) throws IOException {'
         );
+        expect(updaterPatched).toContain(
+          'logger.info("No checksum provided, skipping checksum verification");'
+        );
+
+        // 4. Jalankan patch ke-2 -> hasil identik (idempoten), exit 0
+        const run2 = runPatchScript(scriptPath);
+        expect(run2.code).toBe(0);
+        expect(fs.readFileSync(updaterPath, 'utf8')).toBe(updaterPatched);
+        expect(fs.readFileSync(pluginPath, 'utf8')).toBe(pluginPatched);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
       }
-      if (targetFinishDownload.test(secondPatch)) {
-        secondPatch = secondPatch.replace(targetFinishDownload, '...');
+    });
+
+    it('script menolak file rusak (kurung 850/851 seperti b19) dengan exit 1', () => {
+      const { tmpDir, javaDir, scriptPath } = buildFakeTree();
+      try {
+        const updaterPath = path.join(javaDir, 'CapgoUpdater.java');
+        // Rusakkan file pristine dengan satu kurung tutup ekstra di akhir
+        // (persis korupsi b19: sesudah patch jadi 850 buka / 851 tutup).
+        fs.appendFileSync(updaterPath, '\n}\n');
+        const before = fs.readFileSync(updaterPath, 'utf8');
+        expect(braceCounts(before)).toEqual({ open: 848, close: 849 });
+
+        const run = runPatchScript(scriptPath);
+        expect(run.code).toBe(1);
+        expect(run.output).toContain('FATAL: Keseimbangan kurung rusak');
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
       }
-      expect(secondPatch).toBe(patched);
     });
   });
 
@@ -287,6 +289,60 @@ public class CapgoUpdater {
       const items = await db.transactionItems.where('transactionId').equals(txId).toArray();
       expect(items.length).toBe(1);
       expect(items[0].hargaJualSnapshot).toBe(35000);
+      // (b21-A) subtotal item ikut diperbarui agar sama dengan nominal baru
+      expect(items[0].subtotal).toBe(35000);
+    });
+
+    it('transaksi 1 item qty 3 nominal 35.000: kas tepat +35.000 (bukan +35.001) dan subtotal = 35.000', async () => {
+      const prodId = await productService.addProduct(
+        {
+          name: 'Voucher Axis 5GB',
+          category: 'voucher',
+          modal: 28000,
+          hargaJual: 32000,
+          stock: 10,
+          stockMin: 2,
+          isActive: true,
+        },
+        { actorUserId: ownerUser.id }
+      );
+
+      // 3 pcs @ 32.000 = 96.000
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'voucher',
+          nominal: 96000,
+          paymentMethod: 'tunai',
+          fee: 0,
+          feePaidBy: 'cash',
+          feeManualOverride: false,
+          date: Date.now(),
+          accountId: kasAccountId,
+          cartItems: [{ productId: prodId, qty: 3 }],
+        },
+        { actorUserId: kasirUser.id, shiftId: 'shift-1' }
+      );
+
+      const kasAfterTx = await accountService.getBalance(kasAccountId);
+      expect(kasAfterTx).toBe(846000);
+
+      // Admin mengedit nominal menjadi 35.000
+      await transactionService.editTransaction(
+        txId,
+        { nominal: 35000 },
+        { actorUserId: adminUser.id }
+      );
+
+      // (b21-B) Kas HARUS tepat 785.000 — bukan 785.001 (Math.round(35000/3)=11667 x 3)
+      const kasAfterEdit = await accountService.getBalance(kasAccountId);
+      expect(kasAfterEdit).toBe(785000);
+
+      const items = await db.transactionItems.where('transactionId').equals(txId).toArray();
+      expect(items.length).toBe(1);
+      expect(items[0].qty).toBe(3);
+      // Harga per-unit tampil dibulatkan, tapi total subtotal = nominal baru persis
+      expect(items[0].hargaJualSnapshot).toBe(11667);
+      expect(items[0].subtotal).toBe(35000);
     });
 
     it('transaksi multi-item menolak pengubahan nominal secara langsung', async () => {
@@ -456,7 +512,7 @@ public class CapgoUpdater {
       expect(authStore.canVoidTransaction).toBe(false);
     });
 
-    it('TransactionDetailView: canManageTransaction mengacu pada canEditTransaction store', async () => {
+    it('TransactionDetailView: tombol Edit digating canEditTransaction, tombol Void digating canVoidTransaction', async () => {
       setLoggedInUser(kepalaKasirUser);
 
       const txId = await transactionService.addTransaction(
@@ -488,6 +544,41 @@ public class CapgoUpdater {
       // Kepala Kasir berhak mengelola langsung
       expect(wrapper.find('[data-testid="btn-edit-transaction"]').exists()).toBe(true);
       expect(wrapper.find('[data-testid="btn-void-transaction"]').exists()).toBe(true);
+      wrapper.unmount();
+    });
+
+    it('TransactionDetailView: Kasir tanpa persetujuan Owner tidak melihat tombol Edit & Void', async () => {
+      setLoggedInUser(kasirUser);
+
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'pulsa',
+          nominal: 10000,
+          paymentMethod: 'tunai',
+          fee: 0,
+          feePaidBy: 'cash',
+          feeManualOverride: false,
+          date: Date.now(),
+          accountId: kasAccountId,
+          sourceAccountId: serverPulsaAccountId,
+        },
+        { actorUserId: kasirUser.id, shiftId: 'shift-1' }
+      );
+
+      await router.push(`/transactions/${txId}`);
+      await router.isReady();
+      const wrapper = mount(TransactionDetailView, {
+        global: {
+          plugins: [router],
+        },
+      });
+      await flushPromises();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flushPromises();
+
+      // Kasir tidak punya canEditTransaction maupun canVoidTransaction
+      expect(wrapper.find('[data-testid="btn-edit-transaction"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="btn-void-transaction"]').exists()).toBe(false);
       wrapper.unmount();
     });
   });
@@ -625,6 +716,55 @@ public class CapgoUpdater {
       // Produk kini aktif kembali
       const refreshedProd = await productService.getProduct(testProd.id);
       expect(refreshedProd?.isActive).toBe(true);
+
+      // (b21-D) Umpan balik sukses tampil di halaman, bukan diam-diam
+      const successBanner = wrapper.find('[data-testid="activate-success"]');
+      expect(successBanner.exists()).toBe(true);
+      expect(successBanner.text()).toContain('berhasil diaktifkan');
+      expect(wrapper.find('[data-testid="activate-error"]').exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it('MastersView: aktivasi gagal menampilkan pesan error (bukan diam-diam)', async () => {
+      setLoggedInUser(ownerUser);
+
+      await productService.deactivateProduct(testProd.id, { actorUserId: ownerUser.id });
+
+      await router.push('/masters');
+      await router.isReady();
+      const wrapper = mount(MastersView, {
+        global: {
+          plugins: [router],
+        },
+      });
+      await flushPromises();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flushPromises();
+
+      await wrapper.find('[data-testid="toggle-show-inactive"]').setValue(true);
+      await flushPromises();
+
+      const btnActivate = wrapper.find(`[data-testid="btn-activate-${testProd.id}"]`);
+      expect(btnActivate.exists()).toBe(true);
+
+      // Paksa aktivasi gagal
+      const spy = vi
+        .spyOn(productService, 'activateProduct')
+        .mockRejectedValueOnce(new Error('Gagal mengaktifkan produk.'));
+      await btnActivate.trigger('click');
+      await flushPromises();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flushPromises();
+
+      const errorBanner = wrapper.find('[data-testid="activate-error"]');
+      expect(errorBanner.exists()).toBe(true);
+      expect(errorBanner.text()).toContain('Gagal mengaktifkan produk');
+      expect(wrapper.find('[data-testid="activate-success"]').exists()).toBe(false);
+
+      // Produk tetap nonaktif
+      const prod = await productService.getProduct(testProd.id);
+      expect(prod?.isActive).toBe(false);
+      spy.mockRestore();
       wrapper.unmount();
     });
   });

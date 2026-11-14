@@ -11,8 +11,40 @@
         {{ errorMessage }}
       </div>
 
+      <!-- Umpan balik pulihkan akun (b21): di luar blok v-if di bawah, supaya
+           tetap terlihat sesudah form login muncul (userList terisi). -->
+      <div v-if="restoreSuccessMessage" class="success-banner" data-testid="restore-success">
+        {{ restoreSuccessMessage }}
+      </div>
+      <div v-if="restoreErrorMessage" class="error-banner" data-testid="restore-error">
+        {{ restoreErrorMessage }}
+      </div>
+
+      <!-- Belum ada akun di HP ini (b21): halaman awal adalah Login,
+           bukan SetupOwner — supaya di HP baru user bisa login dulu
+           (akun dipulihkan dari cloud) atau buat akun bila memang belum punya. -->
       <div v-if="userList.length === 0" class="no-user">
-        <p>Belum ada data petugas. Mengalihkan ke setup...</p>
+        <p class="no-user-text">Belum ada akun di HP ini.</p>
+        <p class="no-user-desc">
+          Kalau kamu sudah punya akun di HP lain, pulihkan dulu dari cloud — tidak perlu buat akun baru.
+        </p>
+
+        <button
+          type="button"
+          class="restore-btn"
+          data-testid="btn-restore-cloud"
+          :disabled="isRestoring"
+          @click="handleRestoreFromCloud"
+        >
+          <span v-if="!isRestoring">Pulihkan Akun dari Cloud</span>
+          <span v-else>Memulihkan...</span>
+        </button>
+
+        <div class="divider"><span>atau</span></div>
+
+        <router-link to="/setup-owner" class="create-account-link" data-testid="link-create-account">
+          Belum punya akun? Buat Akun
+        </router-link>
       </div>
 
       <form v-else class="login-form" @submit.prevent="handleLogin">
@@ -53,11 +85,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { db } from '../db/database';
 import type { User } from '../db/types';
 import { useAuthStore } from '../stores/authStore';
+import { supabaseSyncService } from '../services/supabaseSyncService';
 import { AppError } from '../core/errors';
 
 const router = useRouter();
@@ -68,16 +101,64 @@ const selectedUserId = ref('');
 const pin = ref('');
 const errorMessage = ref('');
 const isLoading = ref(false);
+const isRestoring = ref(false);
+const restoreSuccessMessage = ref('');
+const restoreErrorMessage = ref('');
 
-onMounted(async () => {
+async function loadUsers() {
   const users = await db.users.filter((u) => u.isActive).toArray();
   userList.value = users;
-  if (users.length === 0) {
-    router.replace('/setup-owner');
-  } else if (users.length === 1 && users[0]) {
+  if (users.length === 1 && users[0]) {
     selectedUserId.value = users[0].id;
   }
+}
+
+onMounted(async () => {
+  await loadUsers();
 });
+
+// Bila akun dipulihkan lewat dialog CloudSync di App.vue (tampil di atas
+// halaman ini saat install baru), muat ulang daftar petugas agar form
+// login langsung muncul tanpa perlu refresh manual.
+watch(
+  () => authStore.hasUser,
+  async (has) => {
+    if (has) {
+      await loadUsers();
+    }
+  }
+);
+
+// Pulihkan akun dari cloud (bk_sync) — untuk pindah HP tanpa buat akun baru.
+async function handleRestoreFromCloud() {
+  restoreSuccessMessage.value = '';
+  restoreErrorMessage.value = '';
+  isRestoring.value = true;
+  try {
+    const result = await supabaseSyncService.pullAll();
+    await authStore.checkInit();
+    await loadUsers();
+    if (userList.value.length === 0) {
+      restoreErrorMessage.value =
+        'Tidak ada data akun di cloud. Silakan buat akun baru di bawah.';
+    } else {
+      restoreSuccessMessage.value =
+        result.pulled > 0
+          ? `Akun berhasil dipulihkan dari cloud (${result.pulled} data). Silakan login.`
+          : 'Akun berhasil dipulihkan dari cloud. Silakan login.';
+    }
+  } catch (err: unknown) {
+    if (err instanceof AppError) {
+      restoreErrorMessage.value = err.message;
+    } else if (err instanceof Error) {
+      restoreErrorMessage.value = err.message;
+    } else {
+      restoreErrorMessage.value = 'Gagal memulihkan akun dari cloud. Periksa koneksi internet.';
+    }
+  } finally {
+    isRestoring.value = false;
+  }
+}
 
 async function handleLogin() {
   if (!selectedUserId.value || !pin.value) return;
@@ -219,8 +300,83 @@ async function handleLogin() {
 }
 
 .no-user {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   text-align: center;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+.no-user-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.no-user-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.success-banner {
+  background: var(--color-success-subtle, #dcfce7);
+  color: var(--color-success);
+  padding: 10px 14px;
+  border-radius: var(--radius-btn);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.restore-btn {
+  height: 52px;
+  margin-top: 4px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: var(--color-primary);
+  color: var(--color-white);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.restore-btn:active {
+  transform: scale(0.98);
+  background: var(--color-primary-dark);
+}
+
+.restore-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.create-account-link {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-decoration: none;
+  padding: 8px 0;
+}
+
+.create-account-link:active {
+  opacity: 0.7;
 }
 </style>

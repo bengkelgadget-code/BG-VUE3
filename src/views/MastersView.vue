@@ -12,6 +12,14 @@
         Modal dan harga jual diatur di sini oleh Owner/Admin. Kasir tidak melihat nilai modal.
       </p>
 
+      <!-- Umpan balik aktivasi produk (b21-D): jangan gagal diam-diam -->
+      <div v-if="activateSuccessMessage" class="activate-banner success" data-testid="activate-success">
+        {{ activateSuccessMessage }}
+      </div>
+      <div v-if="activateErrorMessage" class="activate-banner error" data-testid="activate-error">
+        {{ activateErrorMessage }}
+      </div>
+
       <!-- Category Filter Tabs -->
       <div class="category-tabs">
         <button
@@ -116,19 +124,25 @@ const authStore = useAuthStore();
 const products = ref<Product[]>([]);
 const selectedCategory = ref<string>('all');
 const showInactive = ref<boolean>(false);
+const activateSuccessMessage = ref<string>('');
+const activateErrorMessage = ref<string>('');
 
 async function loadData() {
   products.value = await db.products.toArray();
 }
 
 async function handleActivateProduct(id: string) {
+  activateSuccessMessage.value = '';
+  activateErrorMessage.value = '';
   try {
     await productService.activateProduct(id, {
       actorUserId: authStore.currentUser?.id || 'system',
     });
     await loadData();
+    activateSuccessMessage.value = 'Produk berhasil diaktifkan kembali.';
   } catch (err) {
-    console.error('Gagal mengaktifkan produk:', err);
+    activateErrorMessage.value =
+      err instanceof Error ? err.message : 'Gagal mengaktifkan produk.';
   }
 }
 
@@ -191,6 +205,23 @@ const filteredProducts = computed(() => {
 .section-intro {
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.activate-banner {
+  padding: 10px 14px;
+  border-radius: var(--radius-btn);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.activate-banner.success {
+  background: var(--color-success-subtle, #dcfce7);
+  color: var(--color-success);
+}
+
+.activate-banner.error {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 
 .category-tabs {

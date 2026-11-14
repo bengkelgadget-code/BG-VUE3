@@ -572,13 +572,26 @@ export class TransactionService {
             if (items.length === 1 && newNominal !== tx.nominal) {
               const singleItem = items[0];
               const newPrice = Math.round(newNominal / singleItem.qty);
+              // (b21-A) subtotal ikut diperbarui agar sama dengan nominal baru.
+              // (b21-B) subtotal disetel ke newNominal persis — bukan newPrice * qty —
+              // supaya total tidak bergeser akibat pembulatan harga per-unit.
               await db.transactionItems.update(singleItem.id, {
                 hargaJualSnapshot: newPrice,
+                subtotal: newNominal,
               });
               singleItem.hargaJualSnapshot = newPrice;
+              singleItem.subtotal = newNominal;
             }
             modal = items.reduce((sum, it) => sum + (it.modalSnapshot * it.qty), 0);
-            hargaJual = items.reduce((sum, it) => sum + (it.hargaJualSnapshot * it.qty), 0);
+            // (b21-B) Untuk transaksi 1 item yang nominalnya diubah, hargaJual
+            // diambil langsung dari newNominal — bukan dari newPrice * qty yang
+            // dibulatkan — supaya kas bergerak tepat sebesar nominal baru
+            // (contoh: 35.000 / qty 3 tidak boleh jadi 35.001).
+            if (items.length === 1 && newNominal !== tx.nominal) {
+              hargaJual = newNominal;
+            } else {
+              hargaJual = items.reduce((sum, it) => sum + (it.hargaJualSnapshot * it.qty), 0);
+            }
           }
 
           // C. Hitung deltas baru

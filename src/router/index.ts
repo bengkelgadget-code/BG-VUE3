@@ -162,10 +162,13 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const hasUser = await authService.hasAnyUser();
 
-  // Bila belum ada user sama sekali, WAJIB ke SetupOwner
+  // Bila belum ada user sama sekali, halaman awal adalah Login (b21).
+  // Buat akun hanya lewat tautan di halaman Login; SetupOwner tetap boleh dibuka.
+  // Ini supaya di HP baru user bisa langsung login (akun dipulihkan dari cloud)
+  // tanpa dipaksa membuat akun baru setiap pindah HP.
   if (!hasUser) {
-    if (to.name !== 'SetupOwner') {
-      return next({ name: 'SetupOwner' });
+    if (to.name !== 'SetupOwner' && to.name !== 'Login') {
+      return next({ name: 'Login' });
     }
     return next();
   }

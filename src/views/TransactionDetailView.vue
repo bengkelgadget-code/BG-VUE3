@@ -153,7 +153,7 @@
         </div>
 
         <!-- 2. JALUR OWNER / ADMIN / KEPALA KASIR ATAU KASIR YANG SUDAH DISETUJUI OWNER -->
-        <div v-if="canManageTransaction || isOwnerApproved" class="management-section">
+        <div v-if="canEditTransaction || canVoidTransaction || isOwnerApproved" class="management-section">
           <!-- Badge indikator persetujuan Owner untuk Kasir -->
           <div v-if="isOwnerApproved" class="owner-approved-badge" data-testid="owner-approved-badge">
             ✓ Persetujuan Owner aktif untuk 1x tindakan pada transaksi ini
@@ -162,6 +162,7 @@
           <!-- Tombol Aksi Utama: Edit & Void -->
           <div v-if="!showEditDialog && !showVoidDialog" class="action-buttons-row">
             <button
+              v-if="canEditTransaction || isOwnerApproved"
               class="btn-edit-trigger"
               data-testid="btn-edit-transaction"
               @click="openEditDialog"
@@ -170,6 +171,7 @@
             </button>
 
             <button
+              v-if="canVoidTransaction || isOwnerApproved"
               class="btn-void-trigger"
               data-testid="btn-void-transaction"
               @click="openVoidDialog"
@@ -334,9 +336,14 @@ const customerName = ref<string>('');
 const kasirName = ref<string>('');
 const successNotice = ref<string>('');
 
-// Matriks Hak Akses
-const canManageTransaction = computed(() => {
+// Matriks Hak Akses (b21-E): edit dan void digating terpisah supaya kedua
+// helper authStore (canEditTransaction & canVoidTransaction) benar-benar dipakai.
+const canEditTransaction = computed(() => {
   return authStore.canEditTransaction;
+});
+
+const canVoidTransaction = computed(() => {
+  return authStore.canVoidTransaction;
 });
 
 // Approval State untuk Kasir
