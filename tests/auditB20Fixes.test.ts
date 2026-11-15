@@ -672,7 +672,7 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
       wrapper.unmount();
     });
 
-    it('MastersView: produk nonaktif disembunyikan secara default, muncul saat filter dicentang, dan bisa diaktifkan kembali', async () => {
+    it('MastersView: produk nonaktif disembunyikan secara default, muncul saat dicari, dan bisa diaktifkan kembali', async () => {
       setLoggedInUser(ownerUser);
 
       // Nonaktifkan produk
@@ -692,10 +692,10 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
       // Secara default, produk nonaktif tidak tampil
       expect(wrapper.find(`[data-testid="product-card-${testProd.id}"]`).exists()).toBe(false);
 
-      // Centang toggle filter tampilkan nonaktif
-      const checkbox = wrapper.find('[data-testid="toggle-show-inactive"]');
-      expect(checkbox.exists()).toBe(true);
-      await checkbox.setValue(true);
+      // (b22) Cari produk lewat search — produk nonaktif yang cocok ikut tampil
+      const searchInput = wrapper.find('[data-testid="search-produk"]');
+      expect(searchInput.exists()).toBe(true);
+      await searchInput.setValue('Telkomsel');
       await flushPromises();
 
       // Sekarang produk nonaktif tampil dengan badge
@@ -741,7 +741,8 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       await flushPromises();
 
-      await wrapper.find('[data-testid="toggle-show-inactive"]').setValue(true);
+      // (b22) Cari produk lewat search agar kartu nonaktif muncul
+      await wrapper.find('[data-testid="search-produk"]').setValue('Telkomsel');
       await flushPromises();
 
       const btnActivate = wrapper.find(`[data-testid="btn-activate-${testProd.id}"]`);
@@ -765,6 +766,163 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
       const prod = await productService.getProduct(testProd.id);
       expect(prod?.isActive).toBe(false);
       spy.mockRestore();
+      wrapper.unmount();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // (f2) Search Produk Master (b22): ganti checkbox tampilkan nonaktif
+  // --------------------------------------------------------------------------
+  describe('(f2) Search Produk Master (b22)', () => {
+    let prodTelkomsel: Product;
+    let prodIndosat: Product;
+    let prodPulsaTsel: Product;
+
+    beforeEach(async () => {
+      const id1 = await productService.addProduct(
+        {
+          name: 'Perdana Telkomsel 10GB',
+          category: 'perdana',
+          operator: 'Telkomsel',
+          modal: 25000,
+          hargaJual: 30000,
+          stock: 5,
+          stockMin: 1,
+          isActive: true,
+        },
+        { actorUserId: ownerUser.id }
+      );
+      prodTelkomsel = (await productService.getProduct(id1))!;
+      const id2 = await productService.addProduct(
+        {
+          name: 'Voucher Indosat 5GB',
+          category: 'voucher',
+          operator: 'Indosat',
+          modal: 20000,
+          hargaJual: 25000,
+          stock: 3,
+          stockMin: 1,
+          isActive: true,
+        },
+        { actorUserId: ownerUser.id }
+      );
+      prodIndosat = (await productService.getProduct(id2))!;
+      const id3 = await productService.addProduct(
+        {
+          name: 'Pulsa 50rb',
+          category: 'pulsa',
+          operator: 'Telkomsel',
+          modal: 48000,
+          hargaJual: 50000,
+          stock: null,
+          stockMin: 0,
+          isActive: true,
+        },
+        { actorUserId: ownerUser.id }
+      );
+      prodPulsaTsel = (await productService.getProduct(id3))!;
+    });
+
+    async function mountMasters() {
+      setLoggedInUser(ownerUser);
+      await router.push('/masters');
+      await router.isReady();
+      const wrapper = mount(MastersView, {
+        global: {
+          plugins: [router],
+        },
+      });
+      await flushPromises();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flushPromises();
+      return wrapper;
+    }
+
+    it('search memfilter berdasarkan nama (case-insensitive) dan operator', async () => {
+      const wrapper = await mountMasters();
+
+      // Semua produk tampil saat search kosong
+      expect(wrapper.find(`[data-testid="product-card-${prodTelkomsel.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodIndosat.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodPulsaTsel.id}"]`).exists()).toBe(true);
+
+      // Ketik "telkomsel" (huruf kecil) -> cocok nama + operator
+      const searchInput = wrapper.find('[data-testid="search-produk"]');
+      expect(searchInput.exists()).toBe(true);
+      await searchInput.setValue('telkomsel');
+      await flushPromises();
+
+      expect(wrapper.find(`[data-testid="product-card-${prodTelkomsel.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodPulsaTsel.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodIndosat.id}"]`).exists()).toBe(false);
+
+      // Ketik "voucher" -> hanya voucher Indosat
+      await searchInput.setValue('voucher');
+      await flushPromises();
+      expect(wrapper.find(`[data-testid="product-card-${prodIndosat.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodTelkomsel.id}"]`).exists()).toBe(false);
+      expect(wrapper.find(`[data-testid="product-card-${prodPulsaTsel.id}"]`).exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it('search bekerja bersama chip kategori (AND)', async () => {
+      const wrapper = await mountMasters();
+
+      // Pilih chip Pulsa
+      const pulsaTab = wrapper.findAll('button.cat-tab').find((w) => w.text() === 'Pulsa');
+      expect(pulsaTab?.exists()).toBe(true);
+      if (pulsaTab) await pulsaTab.trigger('click');
+      await flushPromises();
+
+      // Tanpa query: hanya produk pulsa
+      expect(wrapper.find(`[data-testid="product-card-${prodPulsaTsel.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodTelkomsel.id}"]`).exists()).toBe(false);
+
+      // Tambah query "indosat": tidak ada pulsa Indosat -> empty state search
+      await wrapper.find('[data-testid="search-produk"]').setValue('indosat');
+      await flushPromises();
+      expect(wrapper.find(`[data-testid="product-card-${prodPulsaTsel.id}"]`).exists()).toBe(false);
+      expect(wrapper.text()).toContain('Tidak Ada Produk yang Cocok');
+      wrapper.unmount();
+    });
+
+    it('query tanpa hasil menampilkan pesan tidak cocok + tombol bersihkan pencarian', async () => {
+      const wrapper = await mountMasters();
+
+      await wrapper.find('[data-testid="search-produk"]').setValue('xyz-tidak-ada');
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('Tidak Ada Produk yang Cocok');
+      expect(wrapper.text()).not.toContain('Belum Ada Produk Master');
+
+      // Klik "Bersihkan Pencarian" -> daftar penuh kembali
+      const btnClearEmpty = wrapper.find('[data-testid="search-clear-empty"]');
+      expect(btnClearEmpty.exists()).toBe(true);
+      await btnClearEmpty.trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find(`[data-testid="product-card-${prodTelkomsel.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodIndosat.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodPulsaTsel.id}"]`).exists()).toBe(true);
+      wrapper.unmount();
+    });
+
+    it('tombol X membersihkan pencarian dan mengembalikan daftar penuh', async () => {
+      const wrapper = await mountMasters();
+
+      const searchInput = wrapper.find('[data-testid="search-produk"]');
+      await searchInput.setValue('indosat');
+      await flushPromises();
+      expect(wrapper.find(`[data-testid="product-card-${prodTelkomsel.id}"]`).exists()).toBe(false);
+
+      const btnClear = wrapper.find('[data-testid="search-clear"]');
+      expect(btnClear.exists()).toBe(true);
+      await btnClear.trigger('click');
+      await flushPromises();
+
+      expect((searchInput.element as HTMLInputElement).value).toBe('');
+      expect(wrapper.find(`[data-testid="product-card-${prodTelkomsel.id}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="product-card-${prodIndosat.id}"]`).exists()).toBe(true);
       wrapper.unmount();
     });
   });

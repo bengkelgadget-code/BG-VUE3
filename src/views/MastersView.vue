@@ -8,10 +8,6 @@
         </router-link>
       </div>
 
-      <p class="section-intro">
-        Modal dan harga jual diatur di sini oleh Owner/Admin. Kasir tidak melihat nilai modal.
-      </p>
-
       <!-- Umpan balik aktivasi produk (b21-D): jangan gagal diam-diam -->
       <div v-if="activateSuccessMessage" class="activate-banner success" data-testid="activate-success">
         {{ activateSuccessMessage }}
@@ -34,21 +30,49 @@
         </button>
       </div>
 
-      <!-- Filter Tampilkan Nonaktif -->
-      <div class="filter-controls">
-        <label class="filter-inactive-label" data-testid="filter-inactive-label">
-          <input
-            v-model="showInactive"
-            type="checkbox"
-            data-testid="toggle-show-inactive"
-            class="checkbox-inactive"
-          />
-          <span>Tampilkan Produk Nonaktif</span>
-        </label>
+      <!-- Pencarian produk (b22): ganti checkbox tampilkan nonaktif -->
+      <div class="search-box">
+        <Search class="search-icon" />
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="search-input"
+          placeholder="Cari nama produk…"
+          data-testid="search-produk"
+          aria-label="Cari produk"
+        />
+        <button
+          v-if="searchQuery"
+          type="button"
+          class="search-clear"
+          data-testid="search-clear"
+          title="Bersihkan pencarian"
+          aria-label="Bersihkan pencarian"
+          @click="searchQuery = ''"
+        >
+          <X class="search-clear-icon" />
+        </button>
       </div>
 
       <EmptyState
-        v-if="filteredProducts.length === 0"
+        v-if="filteredProducts.length === 0 && searchQuery.trim() !== ''"
+        title="Tidak Ada Produk yang Cocok"
+        :description="`Tidak ada produk yang cocok dengan '${searchQuery.trim()}'. Coba kata kunci lain.`"
+      >
+        <template #action>
+          <button
+            type="button"
+            class="btn-primary"
+            data-testid="search-clear-empty"
+            @click="searchQuery = ''"
+          >
+            Bersihkan Pencarian
+          </button>
+        </template>
+      </EmptyState>
+
+      <EmptyState
+        v-else-if="filteredProducts.length === 0"
         title="Belum Ada Produk Master"
         description="Master produk lokal kosong saat awal. Tambahkan voucher, perdana, aksesoris, atau pulsa."
       >
@@ -110,7 +134,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ChevronRight } from 'lucide-vue-next';
+import { ChevronRight, Search, X } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import EmptyState from '../components/EmptyState.vue';
 import { db } from '../db/database';
@@ -123,7 +147,7 @@ const router = useRouter();
 const authStore = useAuthStore();
 const products = ref<Product[]>([]);
 const selectedCategory = ref<string>('all');
-const showInactive = ref<boolean>(false);
+const searchQuery = ref<string>('');
 const activateSuccessMessage = ref<string>('');
 const activateErrorMessage = ref<string>('');
 
@@ -165,10 +189,17 @@ onMounted(async () => {
 });
 
 const filteredProducts = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
   return products.value.filter((p) => {
     const matchesCategory = selectedCategory.value === 'all' || p.category === selectedCategory.value;
-    const matchesActive = showInactive.value ? true : p.isActive !== false;
-    return matchesCategory && matchesActive;
+    const matchesQuery =
+      q === '' ||
+      p.name.toLowerCase().includes(q) ||
+      (p.operator ?? '').toLowerCase().includes(q);
+    // (b22) Tanpa query: hanya produk aktif. Dengan query: produk nonaktif
+    // yang cocok ikut tampil supaya tetap bisa diaktifkan kembali.
+    const matchesActive = q !== '' ? true : p.isActive !== false;
+    return matchesCategory && matchesQuery && matchesActive;
   });
 });
 </script>
@@ -202,9 +233,63 @@ const filteredProducts = computed(() => {
   text-decoration: none;
 }
 
-.section-intro {
-  font-size: 13px;
-  color: var(--text-secondary);
+.search-box {
+  position: relative;
+  width: 100%;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 40px 0 36px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border-color);
+  background: var(--surface-card);
+  color: var(--text-main);
+  font-size: 14px;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: var(--color-primary);
+}
+
+.search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  background: var(--bg-hover, #e2e8f0);
+}
+
+.search-clear-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .activate-banner {
@@ -247,28 +332,6 @@ const filteredProducts = computed(() => {
   background: var(--color-primary);
   color: var(--color-white);
   border-color: var(--color-primary);
-}
-
-.filter-controls {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: -4px;
-}
-
-.filter-inactive-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-}
-
-.checkbox-inactive {
-  cursor: pointer;
-  accent-color: var(--color-primary);
 }
 
 .product-list {
