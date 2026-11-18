@@ -991,4 +991,111 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
       expect(tx?.status).toBe('void');
     });
   });
+
+  // --------------------------------------------------------------------------
+  // (b23) Urutan Master Produk: Provider lalu Masa Aktif (hari setelah "/")
+  // --------------------------------------------------------------------------
+  describe('(b23) Sorting Master Produk di MastersView', () => {
+    beforeEach(async () => {
+      await db.products.clear();
+
+      const sample = [
+        { name: 'Tsel 10/28', category: 'voucher' as const, operator: 'Telkomsel' },
+        { name: 'IM3 4/3', category: 'voucher' as const, operator: 'Indosat' },
+        { name: 'Tsel 7/7', category: 'voucher' as const, operator: 'Telkomsel' },
+        { name: 'Tsel 6/2', category: 'voucher' as const, operator: 'Telkomsel' },
+        { name: 'Tsel 11/5', category: 'voucher' as const, operator: 'Telkomsel' },
+        { name: 'Tsel 4/5', category: 'voucher' as const, operator: 'Telkomsel' },
+        { name: 'Perdana Tsel Segel', category: 'perdana' as const, operator: 'Telkomsel' },
+        { name: 'Aksesoris Kabel Data', category: 'aksesoris' as const, operator: '' },
+      ];
+
+      for (const item of sample) {
+        await productService.addProduct(
+          {
+            name: item.name,
+            category: item.category,
+            operator: item.operator,
+            modal: 10000,
+            hargaJual: 12000,
+            stock: 10,
+            stockMin: 0,
+            isActive: true,
+          },
+          { actorUserId: ownerUser.id }
+        );
+      }
+    });
+
+    async function mountMasters() {
+      setLoggedInUser(ownerUser);
+      await router.push('/masters');
+      await router.isReady();
+      const wrapper = mount(MastersView, {
+        global: {
+          plugins: [router],
+        },
+      });
+      await flushPromises();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flushPromises();
+      return wrapper;
+    }
+
+    it('tab Voucher merender produk terurut: Indosat sebelum Telkomsel, lalu hari menaik (2, 5 kuota 4, 5 kuota 11, 7, 28)', async () => {
+      const wrapper = await mountMasters();
+
+      const voucherTab = wrapper.findAll('button.cat-tab').find((w) => w.text() === 'Voucher');
+      expect(voucherTab?.exists()).toBe(true);
+      if (voucherTab) await voucherTab.trigger('click');
+      await flushPromises();
+
+      const names = wrapper.findAll('.prod-name').map((w) => w.text());
+      expect(names).toEqual([
+        'IM3 4/3',
+        'Tsel 6/2',
+        'Tsel 4/5',
+        'Tsel 11/5',
+        'Tsel 7/7',
+        'Tsel 10/28',
+      ]);
+      wrapper.unmount();
+    });
+
+    it('hasil pencarian search tetap terurut dengan aturan b23', async () => {
+      const wrapper = await mountMasters();
+
+      const searchInput = wrapper.find('[data-testid="search-produk"]');
+      await searchInput.setValue('tsel');
+      await flushPromises();
+
+      const names = wrapper.findAll('.prod-name').map((w) => w.text());
+      expect(names).toEqual([
+        'Tsel 6/2',
+        'Tsel 4/5',
+        'Tsel 11/5',
+        'Tsel 7/7',
+        'Tsel 10/28',
+        'Perdana Tsel Segel',
+      ]);
+      wrapper.unmount();
+    });
+
+    it('tab Semua merender produk: provider bernama terurut alfabetis, tanpa operator di paling akhir', async () => {
+      const wrapper = await mountMasters();
+
+      const names = wrapper.findAll('.prod-name').map((w) => w.text());
+      expect(names).toEqual([
+        'IM3 4/3',
+        'Tsel 6/2',
+        'Tsel 4/5',
+        'Tsel 11/5',
+        'Tsel 7/7',
+        'Tsel 10/28',
+        'Perdana Tsel Segel',
+        'Aksesoris Kabel Data',
+      ]);
+      wrapper.unmount();
+    });
+  });
 });

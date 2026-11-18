@@ -141,6 +141,7 @@ import { db } from '../db/database';
 import { formatRupiah } from '../utils/format';
 import { productService } from '../services/productService';
 import { useAuthStore } from '../stores/authStore';
+import { compareProducts } from '../utils/productSort';
 import type { Product } from '../db/types';
 
 const router = useRouter();
@@ -190,7 +191,7 @@ onMounted(async () => {
 
 const filteredProducts = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
-  return products.value.filter((p) => {
+  const matched = products.value.filter((p) => {
     const matchesCategory = selectedCategory.value === 'all' || p.category === selectedCategory.value;
     const matchesQuery =
       q === '' ||
@@ -201,6 +202,8 @@ const filteredProducts = computed(() => {
     const matchesActive = q !== '' ? true : p.isActive !== false;
     return matchesCategory && matchesQuery && matchesActive;
   });
+  // (b23) Urutkan: provider alfabetis (case-insensitive) -> masa aktif (hari setelah "/") numerik menaik -> kuota -> nama
+  return [...matched].sort(compareProducts);
 });
 </script>
 

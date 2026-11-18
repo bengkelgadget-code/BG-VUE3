@@ -1,11 +1,1 @@
-{
-  "bundle_checksum": "e6de27b246514139a68245ceb9d1b872d2e03690bfe3136237b039fc7df95dbb",
-  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b22/update.zip",
-  "bundle_version": "1794786538608",
-  "changelog": "Master Produk: hapus keterangan modal, ganti checkbox nonaktif dengan search produk",
-  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b22/buku-konter-v0.2.0-b22.apk",
-  "force_update": false,
-  "min_apk_version_code": 18,
-  "version_code": 22,
-  "version_name": "0.2.0"
-}
+{"bundle_checksum":"","bundle_url":"https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b23/update.zip","bundle_version":"","changelog":"Master Produk: urutkan daftar berdasarkan provider lalu masa aktif (hari setelah /)","download_url":"","force_update":false,"min_apk_version_code":18,"version_code":23,"version_name":"0.2.0"}
