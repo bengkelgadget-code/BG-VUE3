@@ -1,7 +1,7 @@
 {
-  "bundle_checksum": "a04e0b5109991f8b5979bdc5b3a050a49f2f69c8b963e39473175df3209a3792",
+  "bundle_checksum": "4f692f12dc0f82b4689ea67425bb48aa1352bd88186cb969699fc9264de4dea7",
   "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b33/update.zip",
-  "bundle_version": "1795187221467",
+  "bundle_version": "1795187524507",
   "changelog": "Sistem smart per jenis transaksi (registry layanan) + perbaikan tarik tunai + dropdown searchable di semua tempat",
   "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b33/buku-konter-v0.2.0-b33.apk",
   "force_update": false,
