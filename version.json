@@ -1,11 +1,11 @@
 {
-  "bundle_checksum": "55eac210eca5df9bc3e51c287a46fc3b439ef6bfa8e45a871b20109823409af0",
-  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b28/update.zip",
-  "bundle_version": "1795146185726",
-  "changelog": "Edit transaksi: Owner & Kepala Kasir bisa ubah Sumber Dana dan Diterima Di",
-  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b28/buku-konter-v0.2.0-b28.apk",
+  "bundle_checksum": "",
+  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b29/update.zip",
+  "bundle_version": "v0.2.0-b29",
+  "changelog": "Cabut cabang pintas accountId di tambah transaksi (kembalikan penjaga akun Kas); tanpa perubahan perilaku aplikasi",
+  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b29/buku-konter-v0.2.0-b29.apk",
   "force_update": false,
   "min_apk_version_code": 18,
-  "version_code": 28,
+  "version_code": 29,
   "version_name": "0.2.0"
 }

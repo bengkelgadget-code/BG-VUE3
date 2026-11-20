@@ -125,8 +125,6 @@ export class TransactionService {
         }
         paymentAccountId = firstActive.id;
       }
-    } else if (input.accountId) {
-      paymentAccountId = input.accountId;
     } else {
       // Layanan Kasir (Cash, tarik_tunai, atau layanan tanpa Bayar Admin): WAJIB ada akun Kas (perilaku b23)
       const kasAccount = await db.accounts.where('type').equals('kas').first();

@@ -33,6 +33,47 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
     vi.spyOn(authService, 'hasAnyUser').mockResolvedValue(true);
   }
 
+  /**
+   * Helper setup transaksi tarik tunai untuk pengujian:
+   * Memanggil addTransaction tanpa shortcut accountId (aturan kasir normal),
+   * lalu mengoreksi accountId transaksi & baris ledger pembayaran di DB secara eksplisit
+   * agar akun pembayaran deterministik (mis. kasLaci) tanpa membongkar aturan penurunan service.
+   */
+  async function createSetupTarikTunai(opts: {
+    nominal: number;
+    fee: number;
+    sourceAccountId: string;
+    paymentAccountId: string;
+    actorUserId: string;
+    shiftId?: string | null;
+  }): Promise<string> {
+    const txId = await transactionService.addTransaction(
+      {
+        layanan: 'tarik_tunai',
+        nominal: opts.nominal,
+        fee: opts.fee,
+        feePaidBy: 'cash',
+        feeManualOverride: false,
+        paymentMethod: 'tunai',
+        paymentStatus: 'lunas',
+        sourceAccountId: opts.sourceAccountId,
+        date: Date.now(),
+      },
+      { actorUserId: opts.actorUserId, shiftId: opts.shiftId ?? 'shift-test-1' }
+    );
+
+    if (opts.paymentAccountId) {
+      await db.transactions.update(txId, { accountId: opts.paymentAccountId });
+      const ledgers = await db.accountLedger.where('transactionId').equals(txId).toArray();
+      const paymentLedger = ledgers.find((l) => l.delta < 0);
+      if (paymentLedger && paymentLedger.accountId !== opts.paymentAccountId) {
+        await db.accountLedger.update(paymentLedger.id, { accountId: opts.paymentAccountId });
+      }
+    }
+
+    return txId;
+  }
+
   beforeEach(async () => {
     pinia = createPinia();
     setActivePinia(pinia);
@@ -144,21 +185,13 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       // Buat transaksi tarik tunai Rp 1.000.000, fee 7.000
       // Sumber dana: kasKecil, payment: kasLaci
       // Tarik tunai: sumber menerima transfer (+1jt), payment kasir menyerahkan cash -(1jt - 7rb = 993rb)
-      const txId = await transactionService.addTransaction(
-        {
-          layanan: 'tarik_tunai',
-          nominal: 1000000,
-          fee: 7000,
-          feePaidBy: 'cash',
-          feeManualOverride: false,
-          paymentMethod: 'tunai',
-          paymentStatus: 'lunas',
-          sourceAccountId: kasKecil.id,
-          accountId: kasLaci.id,
-          date: Date.now(),
-        },
-        { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
-      );
+      const txId = await createSetupTarikTunai({
+        nominal: 1000000,
+        fee: 7000,
+        sourceAccountId: kasKecil.id,
+        paymentAccountId: kasLaci.id,
+        actorUserId: ownerUser.id,
+      });
 
       // Verifikasi saldo awal setelah transaksi
       // kasKecil awal 2jt + 1jt = 3jt
@@ -200,21 +233,13 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
 
     it('A.3.2 Service: ubah payment saja pada Tarik Tunai mengembalikan payment lama dan menerapkan payment baru', async () => {
       // Buat transaksi tarik tunai Rp 1.000.000, fee 7.000 (sumber Kas Kecil, payment Kas Laci)
-      const txId = await transactionService.addTransaction(
-        {
-          layanan: 'tarik_tunai',
-          nominal: 1000000,
-          fee: 7000,
-          feePaidBy: 'cash',
-          feeManualOverride: false,
-          paymentMethod: 'tunai',
-          paymentStatus: 'lunas',
-          sourceAccountId: kasKecil.id,
-          accountId: kasLaci.id,
-          date: Date.now(),
-        },
-        { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
-      );
+      const txId = await createSetupTarikTunai({
+        nominal: 1000000,
+        fee: 7000,
+        sourceAccountId: kasKecil.id,
+        paymentAccountId: kasLaci.id,
+        actorUserId: ownerUser.id,
+      });
 
       // Ganti paymentAccountId dari Kas Laci ke Kas Toko
       await transactionService.editTransaction(
@@ -244,21 +269,13 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
     });
 
     it('A.3.3 Service: ubah kedua akun + nominal sekaligus (1jt -> 1.2jt) menghitung saldo akhir keempat akun tepat', async () => {
-      const txId = await transactionService.addTransaction(
-        {
-          layanan: 'tarik_tunai',
-          nominal: 1000000,
-          fee: 7000,
-          feePaidBy: 'cash',
-          feeManualOverride: false,
-          paymentMethod: 'tunai',
-          paymentStatus: 'lunas',
-          sourceAccountId: kasKecil.id,
-          accountId: kasLaci.id,
-          date: Date.now(),
-        },
-        { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
-      );
+      const txId = await createSetupTarikTunai({
+        nominal: 1000000,
+        fee: 7000,
+        sourceAccountId: kasKecil.id,
+        paymentAccountId: kasLaci.id,
+        actorUserId: ownerUser.id,
+      });
 
       // Ubah sumber: Kas Kecil -> Kas Besar
       // Ubah payment: Kas Laci -> Kas Toko
@@ -285,21 +302,13 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
     });
 
     it('A.3.4 Service: Kepala Kasir berhasil ubah akun; Admin dan Kasir (meski dengan PIN Owner) DITOLAK', async () => {
-      const txId = await transactionService.addTransaction(
-        {
-          layanan: 'tarik_tunai',
-          nominal: 1000000,
-          fee: 7000,
-          feePaidBy: 'cash',
-          feeManualOverride: false,
-          paymentMethod: 'tunai',
-          paymentStatus: 'lunas',
-          sourceAccountId: kasKecil.id,
-          accountId: kasLaci.id,
-          date: Date.now(),
-        },
-        { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
-      );
+      const txId = await createSetupTarikTunai({
+        nominal: 1000000,
+        fee: 7000,
+        sourceAccountId: kasKecil.id,
+        paymentAccountId: kasLaci.id,
+        actorUserId: ownerUser.id,
+      });
 
       // 1. Kepala Kasir mengubah akun -> BERHASIL
       await expect(
@@ -355,21 +364,13 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       });
       await db.accounts.update(nonActiveAccId, { isActive: false });
 
-      const txId = await transactionService.addTransaction(
-        {
-          layanan: 'tarik_tunai',
-          nominal: 500000,
-          fee: 5000,
-          feePaidBy: 'cash',
-          feeManualOverride: false,
-          paymentMethod: 'tunai',
-          paymentStatus: 'lunas',
-          sourceAccountId: kasKecil.id,
-          accountId: kasLaci.id,
-          date: Date.now(),
-        },
-        { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
-      );
+      const txId = await createSetupTarikTunai({
+        nominal: 500000,
+        fee: 5000,
+        sourceAccountId: kasKecil.id,
+        paymentAccountId: kasLaci.id,
+        actorUserId: ownerUser.id,
+      });
 
       // Akun tidak ada
       await expect(
@@ -416,21 +417,13 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
     });
 
     it('A.3.6 Service: transaksi void tetap tidak bisa diedit & edit tanpa ubah akun tetap normal', async () => {
-      const txId = await transactionService.addTransaction(
-        {
-          layanan: 'tarik_tunai',
-          nominal: 300000,
-          fee: 5000,
-          feePaidBy: 'cash',
-          feeManualOverride: false,
-          paymentMethod: 'tunai',
-          paymentStatus: 'lunas',
-          sourceAccountId: kasKecil.id,
-          accountId: kasLaci.id,
-          date: Date.now(),
-        },
-        { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
-      );
+      const txId = await createSetupTarikTunai({
+        nominal: 300000,
+        fee: 5000,
+        sourceAccountId: kasKecil.id,
+        paymentAccountId: kasLaci.id,
+        actorUserId: ownerUser.id,
+      });
 
       await transactionService.voidTransaction(txId, {
         reason: 'Alasan void pembatalan',
@@ -450,21 +443,13 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
 
   describe('B. UI Dialog Edit Transaksi', () => {
     it('A.3.7 UI: render dialog edit sebagai Owner/Kepala Kasir menampilkan dropdown akun; Admin/Kasir tidak menampilkannya', async () => {
-      const txId = await transactionService.addTransaction(
-        {
-          layanan: 'tarik_tunai',
-          nominal: 1000000,
-          fee: 7000,
-          feePaidBy: 'cash',
-          feeManualOverride: false,
-          paymentMethod: 'tunai',
-          paymentStatus: 'lunas',
-          sourceAccountId: kasKecil.id,
-          accountId: kasLaci.id,
-          date: Date.now(),
-        },
-        { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
-      );
+      const txId = await createSetupTarikTunai({
+        nominal: 1000000,
+        fee: 7000,
+        sourceAccountId: kasKecil.id,
+        paymentAccountId: kasLaci.id,
+        actorUserId: ownerUser.id,
+      });
 
       // 1. Mount sebagai Owner
       setLoggedInUser(ownerUser);
@@ -542,6 +527,69 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
 
       adminWrapper.unmount();
       await flushPromises();
+    });
+  });
+
+  describe('C. Regresi F-B28-1: addTransaction tidak menerima shortcut accountId dan wajib akun Kas', () => {
+    it('C.1 Layanan kasir (tarik_tunai) dengan accountId diisi tetap DITOLAK bila tidak ada akun Kas di database', async () => {
+      // Hapus semua akun tipe kas
+      await db.accounts.where('type').equals('kas').delete();
+
+      // Coba tambah transaksi tarik_tunai dengan accountId diisi Bank BCA
+      // Bila shortcut accountId masih ada, ini akan lolos dan membukukan ke Bank BCA (celah laten F-B28-1)
+      // Tanpa shortcut, ini HARUS ditolak oleh penjaga akun Kas
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'tarik_tunai',
+            nominal: 500000,
+            fee: 5000,
+            feePaidBy: 'cash',
+            feeManualOverride: false,
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            sourceAccountId: bankBca.id,
+            accountId: bankBca.id,
+            date: Date.now(),
+          },
+          { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
+        )
+      ).rejects.toThrow('Belum ada akun Kas. Tambahkan akun Kas terlebih dahulu.');
+    });
+
+    it('C.2 Layanan kasir dengan accountId diisi tetap mengabaikannya dan menggunakan akun Kas pertama (aturan b25)', async () => {
+      // Ambil akun Kas pertama yang akan dipilih oleh db.accounts.where('type').equals('kas').first()
+      const firstKas = (await db.accounts.where('type').equals('kas').first())!;
+      // Pilih akun lain (bukan firstKas) untuk dikirim ke input.accountId
+      const otherAccount = (await db.accounts.toArray()).find((a) => a.id !== firstKas.id)!;
+
+      // Input membawa accountId: otherAccount.id, namun addTransaction harus mengabaikannya
+      // dan menjatuhkan paymentAccountId ke akun Kas pertama (firstKas.id)
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'tarik_tunai',
+          nominal: 500000,
+          fee: 5000,
+          feePaidBy: 'cash',
+          feeManualOverride: false,
+          paymentMethod: 'tunai',
+          paymentStatus: 'lunas',
+          sourceAccountId: kasBesar.id,
+          accountId: otherAccount.id, // Seharusnya diabaikan oleh addTransaction
+          date: Date.now(),
+        },
+        { actorUserId: ownerUser.id, shiftId: 'shift-test-1' }
+      );
+
+      const createdTx = await db.transactions.get(txId);
+      // Harus jatuh ke akun Kas pertama (firstKas), BUKAN otherAccount
+      expect(createdTx?.accountId).toBe(firstKas.id);
+      expect(createdTx?.accountId).not.toBe(otherAccount.id);
+
+      // Ledger keluar juga harus memotong akun Kas pertama (firstKas)
+      const ledgers = await db.accountLedger.where('transactionId').equals(txId).toArray();
+      const paymentLedger = ledgers.find((l) => l.delta < 0);
+      expect(paymentLedger?.accountId).toBe(firstKas.id);
     });
   });
 });
