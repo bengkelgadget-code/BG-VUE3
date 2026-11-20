@@ -67,7 +67,7 @@ export class ProductService {
 
   public async createProductFromCatalog(
     catalogId: string,
-    params: { modal: number; hargaJual: number; stockMin?: number },
+    params: { modal?: number; hargaJual?: number; stockMin?: number } = {},
     opts: { actorUserId: string }
   ): Promise<string> {
     await this.checkAdminAccess(opts.actorUserId);
@@ -82,6 +82,16 @@ export class ProductService {
       throw new AppError('Produk ini sudah ada di Master Produk.');
     }
 
+    const modal =
+      params.modal !== undefined && params.modal > 0
+        ? params.modal
+        : (catalogEntry.modal ?? 0);
+
+    const hargaJual =
+      params.hargaJual !== undefined && params.hargaJual > 0
+        ? params.hargaJual
+        : (catalogEntry.hargaJual ?? 0);
+
     return await this.addProduct(
       {
         name: catalogEntry.name,
@@ -89,8 +99,8 @@ export class ProductService {
         operator: catalogEntry.operator,
         denomination: catalogEntry.denomination,
         externalProductRef: catalogEntry.id,
-        modal: params.modal,
-        hargaJual: params.hargaJual,
+        modal,
+        hargaJual,
         stock: null, // digital
         stockMin: params.stockMin ?? 0,
         isActive: true,

@@ -102,8 +102,8 @@ export class TransactionService {
         throw new AppError(`Transaksi ${input.layanan} dengan Debit Rekening membutuhkan akun sumber dana.`);
       }
       paymentAccountId = input.sourceAccountId;
-    } else {
-      // Cash, tarik_tunai, atau layanan tanpa Bayar Admin (voucher, perdana, aksesoris, pulsa, data, token_pln, operasional, pindah_dana, deposit)
+    } else if (isOwnerService) {
+      // Layanan Owner: gunakan Kas jika ada, atau sourceAccountId, atau akun aktif pertama
       const kasAccount = await db.accounts.where('type').equals('kas').first();
       if (kasAccount) {
         paymentAccountId = kasAccount.id;
@@ -116,6 +116,13 @@ export class TransactionService {
         }
         paymentAccountId = firstActive.id;
       }
+    } else {
+      // Layanan Kasir (Cash, tarik_tunai, atau layanan tanpa Bayar Admin): WAJIB ada akun Kas (perilaku b23)
+      const kasAccount = await db.accounts.where('type').equals('kas').first();
+      if (!kasAccount) {
+        throw new AppError('Belum ada akun Kas. Tambahkan akun Kas terlebih dahulu.');
+      }
+      paymentAccountId = kasAccount.id;
     }
 
     const transactionId = uuidv4();
@@ -150,8 +157,8 @@ export class TransactionService {
     let productNameSnapshot = input.layanan;
 
     const itemsToSave: TransactionItem[] = [];
-    const rawItems = (input as { cartItems?: { productId: string; qty: number }[]; items?: { productId: string; qty: number }[] }).cartItems ||
-      (input as { cartItems?: { productId: string; qty: number }[]; items?: { productId: string; qty: number }[] }).items;
+    const rawItems = (input as { cartItems?: CartItemInput[]; items?: CartItemInput[] }).cartItems ||
+      (input as { cartItems?: CartItemInput[]; items?: CartItemInput[] }).items;
 
     if (rawItems && rawItems.length > 0) {
       // Keranjang multi-item / pembelian_stok
@@ -163,8 +170,28 @@ export class TransactionService {
         if (!product) continue;
         const pricing = await productService.getModalAndPrice(item.productId);
         const qty = item.qty || 1;
-        totalModal += pricing.modal * qty;
-        totalJual += pricing.hargaJual * qty;
+
+        let itemSubtotal: number;
+        let itemModalSnapshot: number;
+        let itemHargaJualSnapshot: number;
+
+        if (input.layanan === 'pembelian_stok' && typeof item.nominal === 'number') {
+          // b25: subtotal = item.nominal (harga beli baris itu, persis — JANGAN pakai hargaJualSnapshot * qty).
+          // modalSnapshot = Math.round(item.nominal / qty) (harga beli per pcs, hanya untuk tampilan;
+          // sumber kebenaran biaya beli adalah subtotal + nominal transaksi).
+          // hargaJualSnapshot tetap harga jual master (referensi).
+          itemSubtotal = item.nominal;
+          itemModalSnapshot = Math.round(item.nominal / qty);
+          itemHargaJualSnapshot = pricing.hargaJual;
+          totalModal += item.nominal;
+          totalJual += pricing.hargaJual * qty;
+        } else {
+          itemSubtotal = pricing.hargaJual * qty;
+          itemModalSnapshot = pricing.modal;
+          itemHargaJualSnapshot = pricing.hargaJual;
+          totalModal += pricing.modal * qty;
+          totalJual += pricing.hargaJual * qty;
+        }
 
         itemsToSave.push({
           id: uuidv4(),
@@ -172,9 +199,9 @@ export class TransactionService {
           productId: item.productId,
           productNameSnapshot: product.name,
           qty,
-          modalSnapshot: pricing.modal,
-          hargaJualSnapshot: pricing.hargaJual,
-          subtotal: pricing.hargaJual * qty,
+          modalSnapshot: itemModalSnapshot,
+          hargaJualSnapshot: itemHargaJualSnapshot,
+          subtotal: itemSubtotal,
         });
       }
 
@@ -611,12 +638,21 @@ export class TransactionService {
               // (b21-A) subtotal ikut diperbarui agar sama dengan nominal baru.
               // (b21-B) subtotal disetel ke newNominal persis — bukan newPrice * qty —
               // supaya total tidak bergeser akibat pembulatan harga per-unit.
-              await db.transactionItems.update(singleItem.id, {
-                hargaJualSnapshot: newPrice,
-                subtotal: newNominal,
-              });
-              singleItem.hargaJualSnapshot = newPrice;
-              singleItem.subtotal = newNominal;
+              if (tx.layanan === 'pembelian_stok') {
+                await db.transactionItems.update(singleItem.id, {
+                  modalSnapshot: newPrice,
+                  subtotal: newNominal,
+                });
+                singleItem.modalSnapshot = newPrice;
+                singleItem.subtotal = newNominal;
+              } else {
+                await db.transactionItems.update(singleItem.id, {
+                  hargaJualSnapshot: newPrice,
+                  subtotal: newNominal,
+                });
+                singleItem.hargaJualSnapshot = newPrice;
+                singleItem.subtotal = newNominal;
+              }
             }
             modal = items.reduce((sum, it) => sum + (it.modalSnapshot * it.qty), 0);
             // (b21-B) Untuk transaksi 1 item yang nominalnya diubah, hargaJual

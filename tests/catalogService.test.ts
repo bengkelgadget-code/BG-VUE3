@@ -69,7 +69,7 @@ describe('CatalogService (Sinkronisasi Read-Only Katalog Supabase)', () => {
     expect(result.added).toBe(2);
     expect(result.updated).toBe(0);
     expect(mockFrom).toHaveBeenCalledWith('products');
-    expect(mockSelect).toHaveBeenCalledWith('sku_code, product_name, category, brand');
+    expect(mockSelect).toHaveBeenCalledWith('sku_code, product_name, category, brand, harga_modal, harga_jual');
     expect(mockEq).toHaveBeenCalledWith('is_active', true);
 
     // Cek data di Dexie
@@ -152,12 +152,19 @@ describe('CatalogService (Sinkronisasi Read-Only Katalog Supabase)', () => {
 
     const fakeClient = {
       from: (table: string) => {
-        expect(table).toBe('products');
+        if (table === 'products') {
+          return {
+            select: (cols: string) => {
+              expect(cols).toBe('sku_code, product_name, category, brand, harga_modal, harga_jual');
+              return { eq: mockEq };
+            },
+          };
+        }
         return {
-          select: (cols: string) => {
-            expect(cols).toBe('sku_code, product_name, category, brand');
-            return { eq: mockEq };
-          },
+          select: () => ({
+            ilike: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
+            eq: () => Promise.resolve({ data: [], error: null }),
+          }),
         };
       },
     } as unknown as SupabaseClient;

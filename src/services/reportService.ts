@@ -55,6 +55,10 @@ export class ReportService {
         total += t.nominal;
         continue;
       }
+      if (t.layanan === 'pembelian_stok') {
+        total += t.nominal;
+        continue;
+      }
       if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pemasukan_lain'].includes(t.layanan)) {
         continue;
       }
@@ -79,7 +83,7 @@ export class ReportService {
         laba -= t.nominal;
         continue;
       }
-      if (['pindah_dana', 'deposit_server', 'deposit_provider'].includes(t.layanan)) {
+      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(t.layanan)) {
         continue;
       }
       if (t.layanan === 'pemasukan_lain') {
@@ -125,7 +129,7 @@ export class ReportService {
       } else if (t.layanan === 'operasional') {
         entry.omzet += t.nominal;
         entry.laba -= t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider'].includes(t.layanan)) {
+      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(t.layanan)) {
         entry.omzet += t.nominal;
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
@@ -149,6 +153,9 @@ export class ReportService {
     const map: Record<string, { total: number; laba: number }> = {};
 
     for (const t of txs) {
+      if (t.layanan === 'pembelian_stok') {
+        continue;
+      }
       const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
       for (const item of items) {
         if (!map[item.productNameSnapshot]) {
@@ -182,13 +189,15 @@ export class ReportService {
       if (t.layanan === 'operasional') {
         p.totalOut += t.nominal;
         p.laba -= t.nominal;
+      } else if (t.layanan === 'pembelian_stok') {
+        p.totalOut += t.nominal;
       } else if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(t.layanan)) {
         p.totalIn += t.fee;
         p.laba += t.fee;
       } else if (t.layanan === 'pemasukan_lain') {
         p.totalIn += t.nominal;
         p.laba += t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider'].includes(t.layanan)) {
+      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(t.layanan)) {
         p.totalIn += t.nominal;
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
@@ -222,7 +231,7 @@ export class ReportService {
         entry.laba += t.nominal;
       } else if (t.layanan === 'operasional') {
         entry.laba -= t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider'].includes(t.layanan)) {
+      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(t.layanan)) {
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
         for (const item of items) {

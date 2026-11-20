@@ -58,6 +58,8 @@ export interface ProductCatalogEntry {
   category: ProductCategory;
   operator?: string;
   denomination?: string;
+  modal?: number; // int Rupiah
+  hargaJual?: number; // int Rupiah
   isActive: boolean;
   updatedAt: number; // epoch ms
 }

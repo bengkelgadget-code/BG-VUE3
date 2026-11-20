@@ -470,7 +470,7 @@ async function handleSubmit() {
       if (!srcAcc) {
         throw new AppError('Pilih akun pembayaran untuk pembelian stok.');
       }
-      prodId = selectedProductId.value;
+      // b25: Pembelian stok HANYA mengirim cartItems (jangan kirim prodId)
       cartItems = [
         {
           productId: selectedProductId.value,

@@ -537,8 +537,8 @@ async function loadCatalogPrefill() {
     category.value = entry.category;
     operator.value = entry.operator || '';
     operatorInput.value = entry.operator || '';
-    modal.value = 0;
-    hargaJual.value = 0;
+    modal.value = entry.modal ?? 0;
+    hargaJual.value = entry.hargaJual ?? 0;
     stock.value = 0;
     stockMin.value = 2;
   } catch (err: unknown) {

@@ -182,9 +182,9 @@
 
           <div class="prod-right-wrapper">
             <div v-if="p.isCatalog" class="prod-right catalog-pricing">
-              <span class="prod-jual money-display text-muted">Jual: —</span>
-              <span class="prod-modal money-display text-muted">Modal: —</span>
-              <span class="prod-hint-setup">Atur Harga →</span>
+              <span class="prod-jual money-display" :class="{ 'text-muted': !p.hargaJual }">Jual: {{ p.hargaJual ? formatRupiah(p.hargaJual) : '—' }}</span>
+              <span class="prod-modal money-display" :class="{ 'text-muted': !p.modal }">Modal: {{ p.modal ? formatRupiah(p.modal) : '—' }}</span>
+              <span class="prod-hint-setup">{{ (p.hargaJual || p.modal) ? 'Atur / Pakai (Harga DB) →' : 'Atur Harga →' }}</span>
             </div>
             <div v-else class="prod-right">
               <span class="prod-jual money-display">Jual: {{ formatRupiah(p.hargaJual) }}</span>
@@ -311,7 +311,12 @@ async function handleManualSync(isAuto = false) {
       actorUserId: authStore.currentUser?.id || 'system',
     });
     await loadData();
-    syncMessage.value = `Sinkronisasi selesai: ${res.added + res.updated} produk katalog (${res.added} baru, ${res.updated} diperbarui).`;
+    const localInfo = res.localUpdated ? `, ${res.localUpdated} harga produk lokal diperbarui` : '';
+    let msg = `Sinkronisasi selesai: ${res.added + res.updated} produk katalog (${res.added} baru, ${res.updated} diperbarui${localInfo}).`;
+    if (res.notice) {
+      msg += ` ${res.notice}`;
+    }
+    syncMessage.value = msg;
   } catch (err: unknown) {
     syncError.value =
       err instanceof Error
@@ -388,8 +393,8 @@ const filteredProducts = computed<DisplayItem[]>(() => {
         name: c.name,
         category: c.category,
         operator: c.operator,
-        modal: 0,
-        hargaJual: 0,
+        modal: c.modal ?? 0,
+        hargaJual: c.hargaJual ?? 0,
         stock: null,
         isActive: true,
         isCatalog: true,

@@ -302,12 +302,18 @@ async function loadHomeData() {
   }
 
   // 4. Transaksi Terakhir (maks 5, terbaru dulu)
-  // Untuk Owner tampilkan lintas semua shift/petugas; untuk Kasir tampilkan shift aktif
+  // Untuk Owner tampilkan lintas semua shift/petugas; untuk Kasir tampilkan shift aktif (kosong bila belum ada shift aktif)
   let txList = await db.transactions.orderBy('date').reverse().toArray();
-  if (!authStore.isOwner && activeShift.value) {
-    txList = txList.filter((t) => t.shiftId === activeShift.value!.id);
+  if (!authStore.isOwner) {
+    if (activeShift.value) {
+      txList = txList.filter((t) => t.shiftId === activeShift.value!.id);
+      recentTransactions.value = txList.slice(0, 5);
+    } else {
+      recentTransactions.value = [];
+    }
+  } else {
+    recentTransactions.value = txList.slice(0, 5);
   }
-  recentTransactions.value = txList.slice(0, 5);
 }
 
 onMounted(async () => {
