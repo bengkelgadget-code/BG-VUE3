@@ -42,6 +42,8 @@ export interface EditTransactionInput {
   fee?: number;
   note?: string;
   customerName?: string;
+  sourceAccountId?: string;
+  paymentAccountId?: string;
   layanan?: string;
   date?: number;
   userId?: string;
@@ -123,6 +125,8 @@ export class TransactionService {
         }
         paymentAccountId = firstActive.id;
       }
+    } else if (input.accountId) {
+      paymentAccountId = input.accountId;
     } else {
       // Layanan Kasir (Cash, tarik_tunai, atau layanan tanpa Bayar Admin): WAJIB ada akun Kas (perilaku b23)
       const kasAccount = await db.accounts.where('type').equals('kas').first();
@@ -573,6 +577,76 @@ export class TransactionService {
       throw new AppError('Status transaksi tidak dapat diubah melalui menu edit.');
     }
 
+    // Kunci otorisasi perubahan akun: hanya untuk Owner dan Kepala Kasir
+    const isSourceChanged = input.sourceAccountId !== undefined && input.sourceAccountId !== tx.sourceAccountId;
+    const isPaymentChanged = input.paymentAccountId !== undefined && input.paymentAccountId !== tx.accountId;
+    const isAccountChanged = isSourceChanged || isPaymentChanged;
+
+    if (isAccountChanged) {
+      if (actor.role !== 'owner' && actor.role !== 'kepala_kasir') {
+        throw new AppError('Perubahan akun transaksi hanya untuk Owner dan Kepala Kasir.');
+      }
+
+      // Validasi akun sumber baru jika berubah
+      if (isSourceChanged) {
+        if (!input.sourceAccountId) {
+          throw new AppError('Akun sumber dana baru tidak boleh kosong.');
+        }
+        const srcAcc = await db.accounts.get(input.sourceAccountId);
+        if (!srcAcc || !srcAcc.isActive) {
+          throw new AppError('Akun sumber dana baru tidak ditemukan atau tidak aktif.');
+        }
+        if (tx.layanan === 'pindah_dana' && input.sourceAccountId === tx.destAccountId) {
+          throw new AppError('Akun sumber dana tidak boleh sama dengan akun tujuan.');
+        }
+      }
+
+      // Validasi akun pembayaran baru jika berubah
+      if (isPaymentChanged) {
+        if (!input.paymentAccountId) {
+          throw new AppError('Akun pembayaran baru tidak boleh kosong.');
+        }
+        const payAcc = await db.accounts.get(input.paymentAccountId);
+        if (!payAcc || !payAcc.isActive) {
+          throw new AppError('Akun pembayaran baru tidak ditemukan atau tidak aktif.');
+        }
+      }
+    }
+
+    // Data nama akun lama & baru untuk jejak audit
+    let oldSourceAccountName: string | undefined;
+    let newSourceAccountName: string | undefined;
+    if (isSourceChanged) {
+      if (tx.sourceAccountId) {
+        const oldAcc = await db.accounts.get(tx.sourceAccountId);
+        oldSourceAccountName = oldAcc?.name;
+      }
+      if (input.sourceAccountId) {
+        const newAcc = await db.accounts.get(input.sourceAccountId);
+        newSourceAccountName = newAcc?.name;
+      }
+    }
+
+    let oldPaymentAccountName: string | undefined;
+    let newPaymentAccountName: string | undefined;
+    if (isPaymentChanged) {
+      if (tx.accountId) {
+        const oldAcc = await db.accounts.get(tx.accountId);
+        oldPaymentAccountName = oldAcc?.name;
+      }
+      if (input.paymentAccountId) {
+        const newAcc = await db.accounts.get(input.paymentAccountId);
+        newPaymentAccountName = newAcc?.name;
+      }
+    }
+
+    const effectiveSourceAccountId = input.sourceAccountId !== undefined ? input.sourceAccountId : tx.sourceAccountId;
+    let effectivePaymentAccountId = input.paymentAccountId !== undefined ? input.paymentAccountId : tx.accountId;
+    if (!effectivePaymentAccountId) {
+      const kasAccount = await db.accounts.where('type').equals('kas').first();
+      effectivePaymentAccountId = kasAccount?.id || '';
+    }
+
     const newNominal = input.nominal !== undefined ? input.nominal : tx.nominal;
     if (newNominal <= 0 || !Number.isFinite(newNominal)) {
       throw new AppError('Nominal transaksi harus berupa angka lebih dari 0.');
@@ -594,6 +668,7 @@ export class TransactionService {
 
     const now = Date.now();
     const isAmountChanged = newNominal !== tx.nominal || newFee !== tx.fee;
+    const shouldRebalance = isAmountChanged || isAccountChanged;
 
     await db.transaction(
       'rw',
@@ -620,8 +695,8 @@ export class TransactionService {
           }
         }
 
-        // 2. Balik saldo lama dan terapkan saldo baru bila nominal / fee berubah
-        if (isAmountChanged) {
+        // 2. Balik saldo lama dan terapkan saldo baru bila nominal / fee / akun berubah
+        if (shouldRebalance) {
           // A. Balik ledger lama
           const existingLedgers = await db.accountLedger.where('transactionId').equals(transactionId).toArray();
           if (existingLedgers.length > 0) {
@@ -676,18 +751,12 @@ export class TransactionService {
             }
           }
 
-          // C. Hitung deltas baru
-          let paymentAccountId = tx.accountId;
-          if (!paymentAccountId) {
-            const kasAccount = await db.accounts.where('type').equals('kas').first();
-            paymentAccountId = kasAccount?.id || '';
-          }
-
+          // C. Hitung deltas baru dengan akun efektif (baru bila diubah)
           const newDeltas = balanceService.computeDeltas({
             layanan: tx.layanan,
-            sourceAccountId: tx.sourceAccountId,
+            sourceAccountId: effectiveSourceAccountId,
             destAccountId: tx.destAccountId,
-            paymentAccountId,
+            paymentAccountId: effectivePaymentAccountId,
             nominal: newNominal,
             modal,
             hargaJual,
@@ -697,7 +766,7 @@ export class TransactionService {
 
           // D. Terapkan deltas baru
           if (tx.paymentStatus === 'hutang') {
-            const sourceDeltas = newDeltas.filter((d) => d.accountId === tx.sourceAccountId);
+            const sourceDeltas = newDeltas.filter((d) => d.accountId === effectiveSourceAccountId);
             if (sourceDeltas.length > 0) {
               await balanceService.applyDeltas({ transactionId, deltas: sourceDeltas, multiplier: 1 });
             }
@@ -717,15 +786,44 @@ export class TransactionService {
         }
 
         // 3. Update data transaksi
-        await db.transactions.update(transactionId, {
+        const updatePayload: Partial<Transaction> = {
           nominal: newNominal,
           fee: newFee,
           note: newNote,
           feeManualOverride: input.fee !== undefined ? true : tx.feeManualOverride,
           updatedAt: now,
-        });
+        };
+        if (isSourceChanged) {
+          updatePayload.sourceAccountId = input.sourceAccountId;
+        }
+        if (isPaymentChanged) {
+          updatePayload.accountId = input.paymentAccountId;
+        }
+        await db.transactions.update(transactionId, updatePayload);
 
         // 4. Jejak audit
+        const oldAuditDetail: Record<string, unknown> = {
+          nominal: tx.nominal,
+          fee: tx.fee,
+          note: tx.note,
+          customerName: oldCustomerName,
+        };
+        const newAuditDetail: Record<string, unknown> = {
+          nominal: newNominal,
+          fee: newFee,
+          note: newNote,
+          customerName: updatedCustomerName ?? oldCustomerName,
+        };
+
+        if (isSourceChanged) {
+          oldAuditDetail.sourceAccount = { id: tx.sourceAccountId, name: oldSourceAccountName };
+          newAuditDetail.sourceAccount = { id: input.sourceAccountId, name: newSourceAccountName };
+        }
+        if (isPaymentChanged) {
+          oldAuditDetail.paymentAccount = { id: tx.accountId, name: oldPaymentAccountName };
+          newAuditDetail.paymentAccount = { id: input.paymentAccountId, name: newPaymentAccountName };
+        }
+
         await db.auditLogs.add({
           id: uuidv4(),
           actorUserId: opts.actorUserId,
@@ -733,18 +831,8 @@ export class TransactionService {
           entityType: 'transaction',
           entityId: transactionId,
           detail: JSON.stringify({
-            old: {
-              nominal: tx.nominal,
-              fee: tx.fee,
-              note: tx.note,
-              customerName: oldCustomerName,
-            },
-            new: {
-              nominal: newNominal,
-              fee: newFee,
-              note: newNote,
-              customerName: updatedCustomerName ?? oldCustomerName,
-            },
+            old: oldAuditDetail,
+            new: newAuditDetail,
             ...(approvedBy ? { approvedBy } : {}),
           }),
           createdAt: now,

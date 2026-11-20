@@ -184,7 +184,7 @@
           <div v-if="showEditDialog" class="edit-box" data-testid="edit-dialog">
             <h4 class="edit-title">Edit / Koreksi Transaksi</h4>
             <p class="edit-desc">
-              Perbaiki nominal, biaya admin, nama pelanggan, atau catatan. Mutasi saldo dan stok akan disesuaikan otomatis.
+              Perbaiki nominal, biaya admin, nama pelanggan, catatan, atau akun (Owner & Kepala Kasir). Mutasi saldo dan stok akan disesuaikan otomatis.
             </p>
 
             <div class="form-group">
@@ -231,6 +231,41 @@
                 placeholder="Catatan transaksi"
                 data-testid="edit-input-note"
               />
+            </div>
+
+            <!-- Akun: Sumber Dana & Diterima Di (Khusus Owner & Kepala Kasir) -->
+            <div
+              v-if="canEditAccounts && transaction.sourceAccountId"
+              class="form-group"
+            >
+              <label class="form-label" for="edit-source-account">Sumber Dana</label>
+              <select
+                id="edit-source-account"
+                v-model="editForm.sourceAccountId"
+                class="form-select"
+                data-testid="edit-select-source-account"
+              >
+                <option v-for="acc in availableSourceAccounts" :key="acc.id" :value="acc.id">
+                  {{ acc.name }}
+                </option>
+              </select>
+            </div>
+
+            <div
+              v-if="canEditAccounts && transaction.accountId && !['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(transaction.layanan)"
+              class="form-group"
+            >
+              <label class="form-label" for="edit-payment-account">Diterima Di</label>
+              <select
+                id="edit-payment-account"
+                v-model="editForm.paymentAccountId"
+                class="form-select"
+                data-testid="edit-select-payment-account"
+              >
+                <option v-for="acc in availablePaymentAccounts" :key="acc.id" :value="acc.id">
+                  {{ acc.name }}
+                </option>
+              </select>
             </div>
 
             <div v-if="editError" class="edit-error" data-testid="edit-error">
@@ -321,7 +356,7 @@ import { transactionService } from '../services/transactionService';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
-import type { Transaction, TransactionItem } from '../db/types';
+import type { Transaction, TransactionItem, Account } from '../db/types';
 import { AppError } from '../core/errors';
 
 const route = useRoute();
@@ -330,6 +365,7 @@ const authStore = useAuthStore();
 
 const transaction = ref<Transaction | null>(null);
 const items = ref<TransactionItem[]>([]);
+const activeAccounts = ref<Account[]>([]);
 const sourceAccountName = ref<string>('');
 const paymentAccountName = ref<string>('');
 const customerName = ref<string>('');
@@ -344,6 +380,31 @@ const canEditTransaction = computed(() => {
 
 const canVoidTransaction = computed(() => {
   return authStore.canVoidTransaction;
+});
+
+// Hak akses edit akun transaksi (b28): khusus Owner & Kepala Kasir
+const canEditAccounts = computed(() => {
+  const role = authStore.currentUser?.role;
+  return role === 'owner' || role === 'kepala_kasir';
+});
+
+const availableSourceAccounts = computed(() => {
+  if (!transaction.value) return [];
+  const srv = transaction.value.layanan;
+  if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(srv)) {
+    return activeAccounts.value.filter((a) => ['bank', 'ewallet', 'kas'].includes(a.type));
+  }
+  if (['pulsa', 'data', 'token_pln'].includes(srv)) {
+    return activeAccounts.value.filter((a) => a.type === 'server_pulsa');
+  }
+  if (srv === 'pindah_dana') {
+    return activeAccounts.value.filter((a) => a.id !== transaction.value?.destAccountId);
+  }
+  return activeAccounts.value;
+});
+
+const availablePaymentAccounts = computed(() => {
+  return activeAccounts.value.filter((a) => a.type === 'kas');
 });
 
 // Approval State untuk Kasir
@@ -361,6 +422,8 @@ const editForm = ref({
   fee: 0,
   customerName: '',
   note: '',
+  sourceAccountId: '',
+  paymentAccountId: '',
 });
 const editError = ref<string>('');
 const isEditing = ref<boolean>(false);
@@ -414,13 +477,16 @@ async function verifyOwnerApproval() {
   }
 }
 
-function openEditDialog() {
+async function openEditDialog() {
   if (!transaction.value) return;
+  activeAccounts.value = await db.accounts.filter((a) => a.isActive).toArray();
   editForm.value = {
     nominal: transaction.value.nominal,
     fee: transaction.value.fee,
     customerName: customerName.value,
     note: transaction.value.note || '',
+    sourceAccountId: transaction.value.sourceAccountId || '',
+    paymentAccountId: transaction.value.accountId || '',
   };
   editError.value = '';
   showVoidDialog.value = false;
@@ -510,6 +576,8 @@ async function handleEdit() {
         fee: editForm.value.fee,
         note: editForm.value.note,
         customerName: editForm.value.customerName,
+        sourceAccountId: canEditAccounts.value ? (editForm.value.sourceAccountId || undefined) : undefined,
+        paymentAccountId: canEditAccounts.value ? (editForm.value.paymentAccountId || undefined) : undefined,
       },
       {
         actorUserId: authStore.currentUser?.id || '',
