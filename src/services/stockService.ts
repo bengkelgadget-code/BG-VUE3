@@ -19,6 +19,11 @@ export class StockService {
   }): Promise<void> {
     const product = await db.products.get(params.productId);
     if (!product) {
+      const catalog = await db.productCatalogCache.get(params.productId);
+      if (catalog) {
+        // Produk katalog digital tidak memakai stok fisik
+        return;
+      }
       throw new AppError('Produk tidak ditemukan.');
     }
 

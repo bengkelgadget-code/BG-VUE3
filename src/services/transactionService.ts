@@ -86,6 +86,13 @@ export class TransactionService {
       throw new AppError('Transaksi kasir membutuhkan shift aktif.');
     }
 
+    // Kunci otorisasi: Pindah Dana, Deposit Server, dan Deposit Provider hanya untuk Owner
+    const actor = await db.users.get(opts.actorUserId);
+    const ownerOnlyServices = ['pindah_dana', 'deposit_server', 'deposit_provider'];
+    if (ownerOnlyServices.includes(input.layanan) && actor?.role !== 'owner') {
+      throw new AppError('Layanan ini hanya untuk Owner. Gunakan halaman Transaksi Owner.');
+    }
+
     const paymentStatus = input.paymentStatus || 'lunas';
     if (paymentStatus === 'hutang') {
       if (!input.customerId) {
@@ -135,7 +142,6 @@ export class TransactionService {
     }
 
     // 2. Validasi izin ubah tanggal: kasir tidak boleh ubah tanggal; owner/admin wajib isi alasan
-    const actor = await db.users.get(opts.actorUserId);
     const isOwnerOrAdmin = actor ? (actor.role === 'owner' || actor.role === 'admin') : false;
 
     const todayWita = getWitaDateString(now);
@@ -166,9 +172,8 @@ export class TransactionService {
       let totalJual = 0;
 
       for (const item of rawItems) {
-        const product = await db.products.get(item.productId);
-        if (!product) continue;
-        const pricing = await productService.getModalAndPrice(item.productId);
+        const resolved = await productService.resolveSaleProduct(item.productId);
+        if (!resolved) continue;
         const qty = item.qty || 1;
 
         let itemSubtotal: number;
@@ -182,22 +187,22 @@ export class TransactionService {
           // hargaJualSnapshot tetap harga jual master (referensi).
           itemSubtotal = item.nominal;
           itemModalSnapshot = Math.round(item.nominal / qty);
-          itemHargaJualSnapshot = pricing.hargaJual;
+          itemHargaJualSnapshot = resolved.hargaJual;
           totalModal += item.nominal;
-          totalJual += pricing.hargaJual * qty;
+          totalJual += resolved.hargaJual * qty;
         } else {
-          itemSubtotal = pricing.hargaJual * qty;
-          itemModalSnapshot = pricing.modal;
-          itemHargaJualSnapshot = pricing.hargaJual;
-          totalModal += pricing.modal * qty;
-          totalJual += pricing.hargaJual * qty;
+          itemSubtotal = resolved.hargaJual * qty;
+          itemModalSnapshot = resolved.modal;
+          itemHargaJualSnapshot = resolved.hargaJual;
+          totalModal += resolved.modal * qty;
+          totalJual += resolved.hargaJual * qty;
         }
 
         itemsToSave.push({
           id: uuidv4(),
           transactionId,
           productId: item.productId,
-          productNameSnapshot: product.name,
+          productNameSnapshot: resolved.name,
           qty,
           modalSnapshot: itemModalSnapshot,
           hargaJualSnapshot: itemHargaJualSnapshot,
@@ -208,14 +213,13 @@ export class TransactionService {
       modal = totalModal;
       hargaJual = totalJual;
     } else if (input.productId) {
-      const product = await db.products.get(input.productId);
-      if (!product) {
+      const resolved = await productService.resolveSaleProduct(input.productId);
+      if (!resolved) {
         throw new AppError('Produk master tidak ditemukan.');
       }
-      const pricing = await productService.getModalAndPrice(input.productId);
-      modal = pricing.modal;
-      hargaJual = pricing.hargaJual;
-      productNameSnapshot = product.name;
+      modal = resolved.modal;
+      hargaJual = resolved.hargaJual;
+      productNameSnapshot = resolved.name;
 
       itemsToSave.push({
         id: uuidv4(),
@@ -288,6 +292,7 @@ export class TransactionService {
         db.transactionItems,
         db.accountLedger,
         db.products,
+        db.productCatalogCache,
         db.stockMovements,
         db.customers,
         db.auditLogs,
@@ -326,6 +331,8 @@ export class TransactionService {
 
         // 4. Perbarui stok barang jika ada produk fisik
         for (const item of itemsToSave) {
+          const product = await db.products.get(item.productId);
+          if (!product || product.stock === null) continue;
           const isPurchase = input.layanan === 'pembelian_stok';
           await stockService.adjustStock({
             productId: item.productId,
@@ -433,6 +440,7 @@ export class TransactionService {
         db.transactions,
         db.accountLedger,
         db.products,
+        db.productCatalogCache,
         db.stockMovements,
         db.customers,
         db.auditLogs,
@@ -464,6 +472,8 @@ export class TransactionService {
 
         // 3. Kembalikan stok fisik jika ada
         for (const item of items) {
+          const product = await db.products.get(item.productId);
+          if (!product || product.stock === null) continue;
           const isPurchase = tx.layanan === 'pembelian_stok';
           await stockService.adjustStock({
             productId: item.productId,

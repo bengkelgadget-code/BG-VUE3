@@ -361,6 +361,50 @@ export class ProductService {
       hargaJual: p.hargaJual,
     };
   }
+
+  /**
+   * Resolver produk penjualan untuk kasir & keranjang:
+   * 1. Cari produk lokal dulu (db.products)
+   * 2. Bila tidak ada, cari cache katalog (db.productCatalogCache)
+   * 3. Bila katalog dipakai dan hargaJual kosong/0 -> lempar AppError
+   * 4. Bila keduanya tidak ada -> return null
+   */
+  public async resolveSaleProduct(productId: string): Promise<{
+    id: string;
+    name: string;
+    modal: number;
+    hargaJual: number;
+    isCatalog: boolean;
+  } | null> {
+    const local = await db.products.get(productId);
+    if (local) {
+      const pricing = await this.getModalAndPrice(productId);
+      return {
+        id: local.id,
+        name: local.name,
+        modal: pricing.modal,
+        hargaJual: pricing.hargaJual,
+        isCatalog: false,
+      };
+    }
+
+    const catalog = await db.productCatalogCache.get(productId);
+    if (catalog) {
+      const hargaJual = catalog.hargaJual ?? 0;
+      if (!hargaJual || hargaJual <= 0) {
+        throw new AppError('Harga produk katalog belum tersedia. Sinkronkan katalog terlebih dahulu.');
+      }
+      return {
+        id: catalog.id,
+        name: catalog.name,
+        modal: catalog.modal ?? 0,
+        hargaJual,
+        isCatalog: true,
+      };
+    }
+
+    return null;
+  }
 }
 
 export const productService = new ProductService();

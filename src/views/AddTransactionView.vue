@@ -218,11 +218,11 @@
               >
                 <option disabled value="">-- Pilih Produk Master --</option>
                 <option v-for="p in availableDigitalProducts" :key="p.id" :value="p.id">
-                  {{ p.name }} (Harga: {{ formatRupiah(p.hargaJual) }})
+                  {{ p.label }}
                 </option>
               </select>
               <span v-if="availableDigitalProducts.length === 0" class="form-hint-warning">
-                Belum ada produk digital di Master Produk. Minta Owner/Admin mengisi master terlebih dahulu.
+                Belum ada produk digital. Minta Owner/Admin mengisi Master Produk atau menyinkronkan katalog dari Master Produk.
               </span>
             </div>
           </div>
@@ -257,82 +257,6 @@
               />
             </div>
           </div>
-
-          <!-- Layanan Pindah Dana -->
-          <div v-else-if="layanan === 'pindah_dana'" class="cascading-fields">
-            <div class="form-group">
-              <label class="form-label">Akun Asal (Keluar)</label>
-              <select
-                ref="sourceAccountRef"
-                v-model="sourceAccountId"
-                class="form-select"
-                required
-                @change="onSourceAccountChanged"
-              >
-                <option disabled value="">-- Pilih Akun Asal --</option>
-                <option v-for="acc in activeAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }}
-                </option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Akun Tujuan (Masuk)</label>
-              <select
-                ref="destAccountRef"
-                v-model="destAccountId"
-                class="form-select"
-                required
-                @change="onDestAccountChanged"
-              >
-                <option disabled value="">-- Pilih Akun Tujuan --</option>
-                <option
-                  v-for="acc in activeAccounts.filter((a) => a.id !== sourceAccountId)"
-                  :key="acc.id"
-                  :value="acc.id"
-                >
-                  {{ acc.name }}
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Layanan Deposit Server / Provider (Dicatat) -->
-          <div v-else-if="['deposit_server', 'deposit_provider'].includes(layanan)" class="cascading-fields">
-            <div class="form-group">
-              <label class="form-label">Sumber Dana (Rekening / Kas Keluar)</label>
-              <select
-                ref="sourceAccountRef"
-                v-model="sourceAccountId"
-                class="form-select"
-                required
-                @change="onSourceAccountChanged"
-              >
-                <option disabled value="">-- Pilih Akun Sumber Dana --</option>
-                <option v-for="acc in activeAccounts.filter(a => ['bank', 'kas'].includes(a.type))" :key="acc.id" :value="acc.id">
-                  {{ acc.name }}
-                </option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Akun Saldo Catatan (Bertambah)</label>
-              <select
-                ref="destAccountRef"
-                v-model="destAccountId"
-                class="form-select"
-                required
-                @change="onDestAccountChanged"
-              >
-                <option disabled value="">-- Pilih Akun Catatan --</option>
-                <option
-                  v-for="acc in activeAccounts.filter((a) => layanan === 'deposit_server' ? a.type === 'server_pulsa' : a.type === 'provider_app')"
-                  :key="acc.id"
-                  :value="acc.id"
-                >
-                  {{ acc.name }} (catatan)
-                </option>
-              </select>
-            </div>
-          </div>
         </div>
 
         <!-- 3. Baris Nominal Pokok + Biaya Admin + Bayar Admin (Satu Baris) -->
@@ -342,7 +266,7 @@
             v-model="nominal"
             v-model:fee="fee"
             v-model:feePaidBy="feePaidBy"
-            :hide-admin="['voucher', 'perdana', 'aksesoris', 'pulsa', 'data', 'token_pln', 'operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)"
+            :hide-admin="['voucher', 'perdana', 'aksesoris', 'pulsa', 'data', 'token_pln', 'operasional'].includes(layanan)"
             :is-auto-fee="Boolean(matchedRule && !feeManualOverride)"
             :fee-manual-override="feeManualOverride"
             @update:model-value="onNominalChanged"
@@ -360,7 +284,7 @@
         </div>
 
         <!-- 4. Status Pembayaran (Lunas / Hutang) -->
-        <div v-if="!['operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)" class="form-section card-section">
+        <div v-if="layanan !== 'operasional'" class="form-section card-section">
           <div class="form-group">
             <label class="form-label">Status Bayar</label>
             <div class="status-toggle">
@@ -464,19 +388,6 @@
               Pencatatan tanggal susulan/koreksi wajib mencantumkan alasan untuk jejak audit.
             </span>
           </div>
-
-          <!-- Jika layanan non-kasir (pindah_dana, deposit), tampilkan catatan di sini -->
-          <div v-if="['pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan)" class="form-group mt-2">
-            <label class="form-label">Catatan Tambahan (Opsional)</label>
-            <input
-              ref="noteRef"
-              v-model="note"
-              type="text"
-              class="form-input"
-              placeholder="Catatan kecil / keterangan"
-              @keydown.enter.prevent="focusElement(submitBtnRef)"
-            />
-          </div>
         </div>
 
         <!-- 5. Tombol Simpan Sticky di Bawah (Tanpa Popup Summary Preview) -->
@@ -510,7 +421,6 @@ import {
   Layers,
   Zap,
   TrendingDown,
-  RefreshCw,
   AlertCircle,
   ChevronDown,
   Search,
@@ -525,7 +435,7 @@ import { getTodayWitaString, parseWitaDateToEpoch } from '../utils/datePeriod';
 import { db } from '../db/database';
 import { feeRuleService } from '../services/feeRuleService';
 import { transactionService } from '../services/transactionService';
-import type { Account, Product, Customer, AdminFeeRule } from '../db/types';
+import type { Account, Product, Customer, AdminFeeRule, ProductCatalogEntry } from '../db/types';
 import { AppError } from '../core/errors';
 
 const router = useRouter();
@@ -563,6 +473,7 @@ const isSubmitting = ref<boolean>(false);
 const activeAccounts = ref<Account[]>([]);
 const accountBalances = ref<Record<string, number>>({});
 const productList = ref<Product[]>([]);
+const catalogList = ref<ProductCatalogEntry[]>([]);
 const customerList = ref<Customer[]>([]);
 
 // Dropdown Combobox State
@@ -575,7 +486,6 @@ const searchInputRef = ref<HTMLInputElement | null>(null);
 
 // Element Refs for Auto-Focus
 const sourceAccountRef = ref<HTMLSelectElement | null>(null);
-const destAccountRef = ref<HTMLSelectElement | null>(null);
 const productSelectRef = ref<HTMLSelectElement | null>(null);
 const referenceNoRef = ref<HTMLInputElement | null>(null);
 const moneyInputRef = ref<InstanceType<typeof MoneyInput> | null>(null);
@@ -596,9 +506,6 @@ const primaryServices = [
   { code: 'perdana', label: 'Perdana', icon: Package, keywords: ['kartu perdana', 'kartu', 'sim card'] },
   { code: 'aksesoris', label: 'Aksesoris', icon: Package, keywords: ['kabel', 'charger', 'casing', 'headset'] },
   { code: 'ppob', label: 'Tagihan PPOB', icon: Receipt, keywords: ['bpjs', 'pdam', 'tagihan', 'angsuran'] },
-  { code: 'pindah_dana', label: 'Pindah Dana', icon: RefreshCw, keywords: ['mutasi', 'transfer internal'] },
-  { code: 'deposit_server', label: 'Deposit Server', icon: Smartphone, keywords: ['topup server', 'isi saldo server'] },
-  { code: 'deposit_provider', label: 'Deposit Provider', icon: Layers, keywords: ['topup provider', 'isi provider'] },
   { code: 'operasional', label: 'Operasional', icon: TrendingDown, keywords: ['biaya', 'beban', 'pengeluaran'] },
 ];
 
@@ -630,25 +537,75 @@ const availablePhysicalProducts = computed(() =>
   )
 );
 
-const availableDigitalProducts = computed(() =>
-  productList.value.filter(
+export interface DigitalProductDisplay {
+  id: string;
+  name: string;
+  hargaJual: number;
+  isCatalog: boolean;
+  label: string;
+  category: string;
+  operator?: string;
+  externalProductRef?: string;
+}
+
+const availableDigitalProducts = computed<DigitalProductDisplay[]>(() => {
+  const localDigital = productList.value.filter(
     (p) => p.isActive && (p.category === 'pulsa' || p.category === 'data' || p.category === 'token_pln')
-  )
-);
+  );
+
+  const overriddenRefs = new Set(
+    localDigital.map((p) => p.externalProductRef).filter((ref): ref is string => Boolean(ref))
+  );
+
+  const localFormatted: DigitalProductDisplay[] = localDigital.map((p) => ({
+    id: p.id,
+    name: p.name,
+    hargaJual: p.hargaJual,
+    isCatalog: false,
+    label: `${p.name} (Harga: ${formatRupiah(p.hargaJual)})`,
+    category: p.category,
+    operator: p.operator,
+    externalProductRef: p.externalProductRef,
+  }));
+
+  const catalogDigital = catalogList.value
+    .filter(
+      (c) =>
+        c.isActive &&
+        (c.category === 'pulsa' || c.category === 'token_pln' || c.category === 'game') &&
+        !overriddenRefs.has(c.id)
+    )
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      hargaJual: c.hargaJual ?? 0,
+      isCatalog: true,
+      label: `${c.name} (Harga: ${formatRupiah(c.hargaJual ?? 0)}) · KATALOG`,
+      category: c.category,
+      operator: c.operator,
+    }));
+
+  return [...localFormatted, ...catalogDigital];
+});
 
 onMounted(async () => {
   document.addEventListener('pointerdown', handleClickOutside);
 
-  // Ambil jenis dari query parameter jika ada (misal dari Aksi Cepat Home)
+  // Ambil jenis dari query parameter jika ada (misal dari Aksi Cepat Home), hanya yang diizinkan untuk staf
   const qType = route.query['type'];
   if (typeof qType === 'string' && qType) {
-    layanan.value = qType;
+    const isAllowedStaffService = primaryServices.some((s) => s.code === qType);
+    if (isAllowedStaffService) {
+      layanan.value = qType;
+    }
   }
 
   // Muat akun
   activeAccounts.value = await db.accounts.filter((a) => a.isActive).toArray();
-  // Muat produk
+  // Muat produk lokal
   productList.value = await db.products.filter((p) => p.isActive).toArray();
+  // Muat katalog
+  catalogList.value = await db.productCatalogCache.filter((c) => c.isActive).toArray();
   // Muat pelanggan
   customerList.value = await db.customers.toArray();
 
@@ -764,10 +721,6 @@ function focusNextFieldAfterService(code: string) {
       }
     } else if (code === 'operasional') {
       focusElement(sourceAccountRef.value);
-    } else if (code === 'pindah_dana') {
-      focusElement(sourceAccountRef.value);
-    } else if (['deposit_server', 'deposit_provider'].includes(code)) {
-      focusElement(sourceAccountRef.value);
     }
   });
 }
@@ -782,15 +735,7 @@ function onSourceAccountChanged() {
       focusElement(referenceNoRef.value);
     } else if (layanan.value === 'operasional') {
       focusElement(noteRef.value);
-    } else if (layanan.value === 'pindah_dana' || ['deposit_server', 'deposit_provider'].includes(layanan.value)) {
-      focusElement(destAccountRef.value);
     }
-  });
-}
-
-function onDestAccountChanged() {
-  nextTick(() => {
-    focusElement(moneyInputRef.value);
   });
 }
 
@@ -829,7 +774,7 @@ function onNominalEnter() {
       focusElement(statusLunasBtnRef.value);
     }
   } else {
-    if (['operasional', 'pindah_dana', 'deposit_server', 'deposit_provider'].includes(layanan.value)) {
+    if (layanan.value === 'operasional') {
       focusElement(noteRef.value || submitBtnRef.value);
     } else {
       focusElement(statusLunasBtnRef.value);
@@ -882,7 +827,11 @@ function onFeeOverridden(val: number) {
 }
 
 function onProductSelected() {
-  const prod = productList.value.find((p) => p.id === selectedProductId.value);
+  const allAvailable = [
+    ...availablePhysicalProducts.value.map((p) => ({ id: p.id, hargaJual: p.hargaJual })),
+    ...availableDigitalProducts.value.map((p) => ({ id: p.id, hargaJual: p.hargaJual })),
+  ];
+  const prod = allAvailable.find((p) => p.id === selectedProductId.value);
   if (prod) {
     nominal.value = prod.hargaJual;
     fee.value = 0;

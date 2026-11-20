@@ -127,9 +127,9 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     const searchInput = wrapper.find('[data-testid="input-cari-layanan"]');
     expect(searchInput.exists()).toBe(true);
 
-    // Saat search kosong: ke-14 pilihan layanan tampil
+    // Saat search kosong: ke-11 pilihan layanan staf tampil (3 layanan Owner dipindah ke OwnerTransactionView)
     const allOptions = wrapper.findAll('.service-option-item');
-    expect(allOptions.length).toBe(14);
+    expect(allOptions.length).toBe(11);
 
     // Ketik "pul" -> menampilkan Pulsa
     await searchInput.setValue('pul');
