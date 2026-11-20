@@ -32,29 +32,15 @@
             <option value="all">Semua Layanan</option>
             <optgroup label="Penjualan">
               <option value="group_penjualan">Semua Penjualan</option>
-              <option value="pulsa">Pulsa</option>
-              <option value="data">Paket Data</option>
-              <option value="token_pln">Token PLN</option>
-              <option value="voucher">Voucher</option>
-              <option value="perdana">Perdana</option>
-              <option value="aksesoris">Aksesoris</option>
+              <option v-for="l in penjualanLayananList" :key="l.code" :value="l.code">{{ l.label }}</option>
             </optgroup>
             <optgroup label="Transfer & Top-up">
               <option value="group_transfer">Semua Transfer & Top-up</option>
-              <option value="transfer">Transfer</option>
-              <option value="tarik_tunai">Tarik Tunai</option>
-              <option value="jasa_transfer">Jasa Transfer</option>
-              <option value="topup_ewallet">Top-up E-Wallet</option>
-              <option value="ppob">PPOB</option>
-              <option value="pindah_dana">Pindah Dana</option>
-              <option value="deposit_server">Deposit Server</option>
-              <option value="deposit_provider">Deposit Provider</option>
+              <option v-for="l in transferLayananList" :key="l.code" :value="l.code">{{ l.label }}</option>
             </optgroup>
             <optgroup label="Lainnya">
               <option value="group_lainnya">Semua Lainnya</option>
-              <option value="operasional">Operasional</option>
-              <option value="pembelian_stok">Pembelian Stok</option>
-              <option value="pemasukan_lain">Pemasukan Lain</option>
+              <option v-for="l in lainnyaLayananList" :key="l.code" :value="l.code">{{ l.label }}</option>
             </optgroup>
             <optgroup label="Status Khusus">
               <option value="hutang">Hutang (Belum Lunas)</option>
@@ -118,6 +104,7 @@ import { useAuthStore } from '../stores/authStore';
 import { db } from '../db/database';
 import type { Transaction } from '../db/types';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
+import { layananByGroup } from '../core/layanan';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -133,9 +120,19 @@ const categoryChips = [
   { key: 'void', label: 'Batal (Void)' },
 ];
 
-const PENJUALAN_SERVICES = ['pulsa', 'data', 'token_pln', 'voucher', 'perdana', 'aksesoris', 'game'];
-const TRANSFER_SERVICES = ['transfer', 'tarik_tunai', 'jasa_transfer', 'topup_ewallet', 'ppob', 'pindah_dana', 'deposit_server', 'deposit_provider'];
-const LAINNYA_SERVICES = ['operasional', 'pembelian_stok', 'pemasukan_lain'];
+const penjualanLayananList = layananByGroup('penjualan');
+const transferLayananList = [
+  ...layananByGroup('transfer'),
+  ...layananByGroup('owner').filter((l) => l.code.startsWith('deposit_') || l.code === 'pindah_dana'),
+];
+const lainnyaLayananList = [
+  ...layananByGroup('lainnya'),
+  ...layananByGroup('owner').filter((l) => l.code === 'operasional' || l.code === 'pembelian_stok'),
+];
+
+const PENJUALAN_SERVICES = penjualanLayananList.map((l) => l.code);
+const TRANSFER_SERVICES = transferLayananList.map((l) => l.code);
+const LAINNYA_SERVICES = lainnyaLayananList.map((l) => l.code);
 
 onMounted(async () => {
   await loadData();

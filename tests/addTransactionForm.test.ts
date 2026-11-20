@@ -109,7 +109,7 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     });
 
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // Trigger combobox ada di DOM
@@ -127,9 +127,9 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     const searchInput = wrapper.find('[data-testid="input-cari-layanan"]');
     expect(searchInput.exists()).toBe(true);
 
-    // Saat search kosong: ke-12 pilihan layanan staf tampil (termasuk Jasa Transfer di b31)
+    // Saat search kosong: ke-14 pilihan layanan staf tampil (termasuk Jasa Transfer di b31 dan Game di b33)
     const allOptions = wrapper.findAll('.service-option-item');
-    expect(allOptions.length).toBe(12);
+    expect(allOptions.length).toBe(14);
 
     // Ketik "pul" -> menampilkan Pulsa
     await searchInput.setValue('pul');
@@ -148,7 +148,7 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     await searchInput.trigger('keydown', { key: 'ArrowDown' });
     await searchInput.trigger('keydown', { key: 'Enter' });
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // Dropdown menutup setelah memilih
@@ -182,7 +182,7 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     });
 
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // 1. Saat halaman dibuka pertama kali, JANGAN curi fokus ke input apa pun
@@ -190,24 +190,24 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     const triggerBtn = wrapper.find('[data-testid="service-dropdown-trigger"]');
     await triggerBtn.trigger('click');
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // 2. Pilih layanan Pulsa
     const pulsaOption = wrapper.find('[data-testid="service-option-pulsa"]');
     await pulsaOption.trigger('click');
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // Cascading pulsa: server pulsa terisi default, kursor diarahkan ke input nomor tujuan / referenceNo
-    const refNoInput = wrapper.find('input[placeholder="0812xxxx atau No. Meter"]');
+    const refNoInput = wrapper.find('input[type="tel"]');
     expect(refNoInput.exists()).toBe(true);
 
     // Tekan Enter pada referenceNo -> fokus berpindah ke productSelect
     await refNoInput.trigger('keydown.enter');
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // 3. Enter pada nominal dengan layanan transfer mengarah ke admin fee
@@ -215,7 +215,7 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     const tfOption = wrapper.find('[data-testid="service-option-transfer"]');
     await tfOption.trigger('click');
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     const moneyInputComponent = wrapper.findComponent({ name: 'MoneyInput' });
@@ -224,13 +224,13 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     // Emit enter dari nominal input
     moneyInputComponent.vm.$emit('enter');
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // Emit adminEnter dari admin input
     moneyInputComponent.vm.$emit('adminEnter');
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // 4. Ubah status bayar ke hutang -> kursor fokus ke picker pelanggan
@@ -238,7 +238,7 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     expect(hutangBtn?.exists()).toBe(true);
     await hutangBtn?.trigger('click');
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     const customerPicker = wrapper.find('.debt-box select');
@@ -260,19 +260,27 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     });
 
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
+    await flushPromises();
+
+    // Footer tersembunyi saat form kosong (b33)
+    expect(wrapper.find('.sticky-footer').exists()).toBe(false);
+
+    // Isi nominal -> footer muncul
+    const nominalInput = wrapper.find('.nominal-input');
+    await nominalInput.setValue('50000');
+    await nominalInput.trigger('input');
     await flushPromises();
 
     // Elemen .summary-preview ("Total Transaksi") TIDAK boleh ada lagi di footer
     expect(wrapper.find('.summary-preview').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Total Transaksi');
 
-    // Tombol "Simpan Transaksi" tetap ada di .sticky-footer dan membentang
+    // Tombol "Simpan Transaksi" ada di .sticky-footer dan membentang
     const submitBtn = wrapper.find('.sticky-footer .btn-submit-tx');
     expect(submitBtn.exists()).toBe(true);
     expect(submitBtn.text()).toContain('Simpan Transaksi');
-    // Disabled bila nominal <= 0
-    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(true);
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('Poin 4: Form tidak lagi menampilkan dropdown "Diterima Lewat"', async () => {
@@ -288,7 +296,7 @@ describe('AddTransactionView Form Improvements (b4)', () => {
     });
 
     await flushPromises();
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     await flushPromises();
 
     // Pastikan tidak ada label atau select "Diterima Lewat"

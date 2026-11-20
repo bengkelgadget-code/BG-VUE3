@@ -1,3 +1,5 @@
+import { LAYANAN_DEFS } from './layanan';
+
 export const APP_NAME = 'BUKU KONTER';
 export const APP_VERSION = '0.2.0';
 export const TIMEZONE = 'Asia/Makassar'; // WITA (UTC+8)
@@ -9,6 +11,7 @@ export const SERVICE_CODES = {
   PULSA: 'pulsa',
   DATA: 'data',
   TOKEN_PLN: 'token_pln',
+  GAME: 'game',
   VOUCHER: 'voucher',
   PERDANA: 'perdana',
   AKSESORIS: 'aksesoris',
@@ -34,25 +37,9 @@ export const ACCOUNT_TYPES = {
 
 export type AccountTypeCode = typeof ACCOUNT_TYPES[keyof typeof ACCOUNT_TYPES];
 
-export const SERVICE_LABELS: Record<string, string> = {
-  transfer: 'Transfer',
-  tarik_tunai: 'Tarik Tunai',
-  topup_ewallet: 'Top Up E-Wallet',
-  pulsa: 'Pulsa',
-  data: 'Paket Data',
-  token_pln: 'Token PLN',
-  voucher: 'Voucher',
-  perdana: 'Perdana',
-  aksesoris: 'Aksesoris',
-  ppob: 'PPOB / Tagihan',
-  deposit_server: 'Deposit Server (Catatan)',
-  deposit_provider: 'Deposit Provider (Catatan)',
-  pindah_dana: 'Pindah Dana',
-  pembelian_stok: 'Pembelian Stok',
-  operasional: 'Operasional',
-  pemasukan_lain: 'Pemasukan Lain',
-  jasa_transfer: 'Jasa Transfer',
-};
+export const SERVICE_LABELS: Record<string, string> = Object.fromEntries(
+  Object.values(LAYANAN_DEFS).map((def) => [def.code, def.label])
+);
 
 export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   kas: 'Kas (Uang Tunai)',

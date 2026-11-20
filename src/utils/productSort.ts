@@ -1,4 +1,5 @@
 import type { Product, Account, User, Customer, AdminFeeRule } from '../db/types';
+import { getLayananDef } from '../core/layanan';
 
 /**
  * Urutan kategori Master Produk (b24):
@@ -62,6 +63,128 @@ export function parseVoucherQuota(name: string): number | null {
   if (!match || !match[1]) return null;
   const val = parseFloat(match[1]);
   return isNaN(val) ? null : val;
+}
+
+/**
+ * Mengambil nilai nominal token dari nama produk (angka pertama di nama produk).
+ * Contoh: "PLN 20" -> 20, "PLNF100" -> 100, "Token PLN 50.000" -> 50.
+ * Tanpa angka -> mengembalikan null.
+ */
+export function parseTokenValue(name: string): number | null {
+  if (!name) return null;
+  const match = name.match(/\d+/);
+  if (!match) return null;
+  const val = parseInt(match[0], 10);
+  return isNaN(val) ? null : val;
+}
+
+export interface SortableProductItem {
+  id?: string;
+  name?: string;
+  operator?: string;
+  category?: string;
+}
+
+export function compareAlpha(
+  a: SortableProductItem,
+  b: SortableProductItem
+): number {
+  const nameComp = (a.name ?? '').localeCompare(b.name ?? '', undefined, { sensitivity: 'base' });
+  if (nameComp !== 0) return nameComp;
+  return (a.id ?? '').localeCompare(b.id ?? '');
+}
+
+export function compareBrandAlpha(
+  a: SortableProductItem,
+  b: SortableProductItem
+): number {
+  const opA = (a.operator ?? '').trim();
+  const opB = (b.operator ?? '').trim();
+  const hasOpA = opA.length > 0;
+  const hasOpB = opB.length > 0;
+  if (hasOpA && !hasOpB) return -1;
+  if (!hasOpA && hasOpB) return 1;
+  if (hasOpA && hasOpB) {
+    const opComp = opA.localeCompare(opB, undefined, { sensitivity: 'base' });
+    if (opComp !== 0) return opComp;
+  }
+  return compareAlpha(a, b);
+}
+
+export function compareToken(
+  a: SortableProductItem,
+  b: SortableProductItem
+): number {
+  const valA = parseTokenValue(a.name ?? '');
+  const valB = parseTokenValue(b.name ?? '');
+  const numA = valA !== null ? valA : Infinity;
+  const numB = valB !== null ? valB : Infinity;
+  if (numA !== numB) {
+    return numA - numB;
+  }
+  return compareAlpha(a, b);
+}
+
+export function compareTelecom(
+  a: SortableProductItem,
+  b: SortableProductItem
+): number {
+  // Provider (operator)
+  const opA = (a.operator ?? '').trim();
+  const opB = (b.operator ?? '').trim();
+  const hasOpA = opA.length > 0;
+  const hasOpB = opB.length > 0;
+  if (hasOpA && !hasOpB) return -1;
+  if (!hasOpA && hasOpB) return 1;
+  if (hasOpA && hasOpB) {
+    const opComp = opA.localeCompare(opB, undefined, { sensitivity: 'base' });
+    if (opComp !== 0) return opComp;
+  }
+
+  // Masa aktif (hari setelah "/")
+  const rawDaysA = parseVoucherDays(a.name ?? '');
+  const rawDaysB = parseVoucherDays(b.name ?? '');
+  const daysA = rawDaysA !== null ? rawDaysA : Infinity;
+  const daysB = rawDaysB !== null ? rawDaysB : Infinity;
+  if (daysA !== daysB) {
+    return daysA - daysB;
+  }
+
+  // Kuota sebelum "/"
+  const rawQuotaA = parseVoucherQuota(a.name ?? '');
+  const rawQuotaB = parseVoucherQuota(b.name ?? '');
+  const quotaA = rawQuotaA !== null ? rawQuotaA : Infinity;
+  const quotaB = rawQuotaB !== null ? rawQuotaB : Infinity;
+  if (quotaA !== quotaB) {
+    return quotaA - quotaB;
+  }
+
+  return compareAlpha(a, b);
+}
+
+/**
+ * Mengurutkan produk sesuai aturan spesifik yang melekat pada jenis transaksi (b33).
+ */
+export function sortProductsForLayanan<T extends SortableProductItem>(
+  list: T[],
+  layananCode: string
+): T[] {
+  const def = getLayananDef(layananCode);
+  const sortRule = def?.productSort ?? 'none';
+  const copy = [...list];
+
+  switch (sortRule) {
+    case 'token':
+      return copy.sort(compareToken);
+    case 'alpha':
+      return copy.sort(compareAlpha);
+    case 'brand-alpha':
+      return copy.sort(compareBrandAlpha);
+    case 'telecom':
+      return copy.sort(compareTelecom);
+    default:
+      return copy;
+  }
 }
 
 /**

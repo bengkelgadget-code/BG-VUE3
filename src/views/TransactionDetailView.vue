@@ -235,7 +235,7 @@
 
             <!-- Akun: Sumber Dana & Diterima Di (Khusus Owner & Kepala Kasir) -->
             <div
-              v-if="canEditAccounts && transaction.sourceAccountId && transaction.layanan !== 'jasa_transfer'"
+              v-if="canEditAccounts && transaction.sourceAccountId && currentTxDef?.touchesBalances"
               class="form-group"
             >
               <label class="form-label" for="edit-source-account">Sumber Dana</label>
@@ -252,7 +252,7 @@
             </div>
 
             <div
-              v-if="canEditAccounts && transaction.accountId && !['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(transaction.layanan)"
+              v-if="canEditAccounts && transaction.accountId && currentTxDef?.paymentRule !== 'none'"
               class="form-group"
             >
               <label class="form-label" for="edit-payment-account">Diterima Di</label>
@@ -358,6 +358,7 @@ import { useAuthStore } from '../stores/authStore';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
 import type { Transaction, TransactionItem, Account } from '../db/types';
 import { AppError } from '../core/errors';
+import { getLayananDef } from '../core/layanan';
 
 const route = useRoute();
 const router = useRouter();
@@ -388,16 +389,21 @@ const canEditAccounts = computed(() => {
   return role === 'owner' || role === 'kepala_kasir';
 });
 
+const currentTxDef = computed(() =>
+  transaction.value ? getLayananDef(transaction.value.layanan) : undefined
+);
+
 const availableSourceAccounts = computed(() => {
   if (!transaction.value) return [];
   const srv = transaction.value.layanan;
+  const def = currentTxDef.value;
   if (srv === 'tarik_tunai') {
     return activeAccounts.value.filter((a) => a.type === 'kas' || a.type === 'bank');
   }
   if (['transfer', 'topup_ewallet', 'ppob'].includes(srv)) {
     return activeAccounts.value.filter((a) => ['bank', 'ewallet', 'kas'].includes(a.type));
   }
-  if (['pulsa', 'data', 'token_pln'].includes(srv)) {
+  if (def?.group === 'penjualan' && def.needsSourceAccount) {
     return activeAccounts.value.filter((a) => a.type === 'server_pulsa');
   }
   if (srv === 'pindah_dana') {
@@ -408,11 +414,11 @@ const availableSourceAccounts = computed(() => {
 
 const availablePaymentAccounts = computed(() => {
   if (!transaction.value) return [];
-  const srv = transaction.value.layanan;
-  if (srv === 'transfer') {
+  const rule = currentTxDef.value?.paymentRule;
+  if (rule === 'kas') {
     return activeAccounts.value.filter((a) => a.type === 'kas');
   }
-  if (srv === 'tarik_tunai') {
+  if (rule === 'kas-bank') {
     return activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'kas');
   }
   return activeAccounts.value.filter(

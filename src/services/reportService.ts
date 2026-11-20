@@ -1,5 +1,23 @@
 import { db } from '../db/database';
 import type { Product, Account } from '../db/types';
+import { layananByGroup } from '../core/layanan';
+
+const EXCLUDED_IN_SERVICES = [
+  ...layananByGroup('owner').map((l) => l.code),
+  'jasa_transfer',
+];
+
+const EXCLUDED_LABA_SERVICES = [
+  'pindah_dana',
+  'deposit_server',
+  'deposit_provider',
+  'pembelian_stok',
+  'jasa_transfer',
+];
+
+const JASA_FEE_SERVICES = layananByGroup('transfer')
+  .filter((l) => l.hasFee && l.hasFeePaidBy)
+  .map((l) => l.code);
 
 export interface CategoryTotal {
   label: string;
@@ -25,7 +43,7 @@ export class ReportService {
     let total = 0;
 
     for (const t of txs) {
-      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'operasional', 'jasa_transfer'].includes(t.layanan)) {
+      if (EXCLUDED_IN_SERVICES.includes(t.layanan)) {
         continue;
       }
       if (t.layanan === 'pemasukan_lain') {
@@ -33,7 +51,7 @@ export class ReportService {
         continue;
       }
       // Layanan jasa: hanya fee yang merupakan pendapatan konter (nominal pokok adalah uang pelanggan yang diteruskan)
-      if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(t.layanan)) {
+      if (JASA_FEE_SERVICES.includes(t.layanan)) {
         total += t.fee;
       } else {
         // Penjualan barang / pulsa: harga jual masuk
@@ -83,7 +101,7 @@ export class ReportService {
         laba -= t.nominal;
         continue;
       }
-      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(t.layanan)) {
+      if (EXCLUDED_LABA_SERVICES.includes(t.layanan)) {
         continue;
       }
       if (t.layanan === 'pemasukan_lain') {
@@ -120,7 +138,7 @@ export class ReportService {
       const entry = map[t.layanan]!;
       entry.total += 1;
 
-      if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(t.layanan)) {
+      if (JASA_FEE_SERVICES.includes(t.layanan)) {
         entry.omzet += t.fee;
         entry.laba += t.fee;
       } else if (t.layanan === 'pemasukan_lain') {
@@ -129,7 +147,7 @@ export class ReportService {
       } else if (t.layanan === 'operasional') {
         entry.omzet += t.nominal;
         entry.laba -= t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(t.layanan)) {
+      } else if (!EXCLUDED_LABA_SERVICES.includes(t.layanan)) {
         entry.omzet += t.nominal;
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
@@ -191,13 +209,13 @@ export class ReportService {
         p.laba -= t.nominal;
       } else if (t.layanan === 'pembelian_stok') {
         p.totalOut += t.nominal;
-      } else if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(t.layanan)) {
+      } else if (JASA_FEE_SERVICES.includes(t.layanan)) {
         p.totalIn += t.fee;
         p.laba += t.fee;
       } else if (t.layanan === 'pemasukan_lain') {
         p.totalIn += t.nominal;
         p.laba += t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(t.layanan)) {
+      } else if (!EXCLUDED_LABA_SERVICES.includes(t.layanan)) {
         p.totalIn += t.nominal;
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
@@ -225,13 +243,13 @@ export class ReportService {
       const entry = map[name]!;
       entry.total += 1;
 
-      if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(t.layanan)) {
+      if (JASA_FEE_SERVICES.includes(t.layanan)) {
         entry.laba += t.fee;
       } else if (t.layanan === 'pemasukan_lain') {
         entry.laba += t.nominal;
       } else if (t.layanan === 'operasional') {
         entry.laba -= t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(t.layanan)) {
+      } else if (!EXCLUDED_LABA_SERVICES.includes(t.layanan)) {
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
         for (const item of items) {

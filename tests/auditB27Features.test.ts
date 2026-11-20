@@ -326,11 +326,16 @@ describe('Audit b27 Features: Otorisasi Form Staf & Transaksi Produk Katalog', (
       expect(optionTexts.some((t) => t.includes('Telkomsel 5K Custom Harga (Harga: Rp 8.000)'))).toBe(true);
       expect(optionTexts.some((t) => t.includes('Telkomsel 5.000 (Harga: Rp 7.000) · KATALOG'))).toBe(false);
 
-      // Token PLN katalog harus muncul dengan label KATALOG
-      expect(optionTexts.some((t) => t.includes('Token PLN 20.000 (Harga: Rp 22.500) · KATALOG'))).toBe(true);
-
       // Inactive catalog tidak boleh muncul
       expect(optionTexts.some((t) => t.includes('Indosat Nonaktif'))).toBe(false);
+
+      // Buka Token PLN: Token PLN katalog harus muncul dengan label KATALOG (b33: produk difilter per layanan)
+      await trigger.trigger('click');
+      await wrapper.find('[data-testid="service-option-token_pln"]').trigger('click');
+      await waitFor(() => {
+        const plnOptions = wrapper.findAll('.cascading-fields select option').map((o) => o.text());
+        expect(plnOptions.some((t) => t.includes('Token PLN 20.000 (Harga: Rp 22.500) · KATALOG'))).toBe(true);
+      });
 
       wrapper.unmount();
     });
@@ -360,10 +365,10 @@ describe('Audit b27 Features: Otorisasi Form Staf & Transaksi Produk Katalog', (
         expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
       });
 
-      // Pilih layanan pulsa/digital
+      // Pilih layanan game (b33: game punya layanan tersendiri)
       const trigger = wrapper.find('[data-testid="service-dropdown-trigger"]');
       await trigger.trigger('click');
-      await wrapper.find('[data-testid="service-option-pulsa"]').trigger('click');
+      await wrapper.find('[data-testid="service-option-game"]').trigger('click');
 
       await waitFor(() => {
         const productSelect = wrapper.findAll('select').find((s) => s.text().includes('Mobile Legends'));

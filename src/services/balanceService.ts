@@ -95,7 +95,8 @@ export class BalanceService {
 
       case 'pulsa':
       case 'data':
-      case 'token_pln': {
+      case 'token_pln':
+      case 'game': {
         if (!sourceAccountId) {
           throw new AppError(`Transaksi ${layanan} membutuhkan akun server pulsa catatan.`);
         }

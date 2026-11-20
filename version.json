@@ -1,11 +1,11 @@
 {
-  "bundle_checksum": "7b4d472488e4010aaab0ab3cb37b92bead096c6d0df88315783d783dad407986",
-  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b32/update.zip",
-  "bundle_version": "1795174513389",
-  "changelog": "Brand/operator di form produk dipisah per kategori (provider vs aksesoris dll)",
-  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b32/buku-konter-v0.2.0-b32.apk",
+  "bundle_checksum": "",
+  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b33/update.zip",
+  "bundle_version": "v0.2.0-b33",
+  "changelog": "Sistem smart per jenis transaksi (registry layanan) + filter & urutan produk, no HP pulsa opsional, label ACC, footer Simpan muncul saat ada isi",
+  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b33/buku-konter-v0.2.0-b33.apk",
   "force_update": false,
   "min_apk_version_code": 18,
-  "version_code": 32,
+  "version_code": 33,
   "version_name": "0.2.0"
 }

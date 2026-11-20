@@ -177,10 +177,17 @@
             </div>
           </div>
 
-          <!-- Layanan Barang Fisik (Voucher / Perdana / Aksesoris) -->
-          <div v-else-if="['voucher', 'perdana', 'aksesoris'].includes(layanan)" class="cascading-fields">
+          <!-- Layanan Barang Fisik (Voucher / Perdana / ACC) -->
+          <div v-else-if="currentLayananDef?.group === 'penjualan' && !currentLayananDef.needsSourceAccount" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Pilih Barang dari Master Produk</label>
+              <input
+                v-model="productFilterQuery"
+                type="text"
+                class="form-input mb-2"
+                placeholder="Cari produk..."
+                data-testid="filter-physical-product"
+              />
               <select
                 ref="productSelectRef"
                 v-model="selectedProductId"
@@ -189,15 +196,15 @@
                 @change="onProductSelected"
               >
                 <option disabled value="">-- Pilih Produk --</option>
-                <option v-for="p in availablePhysicalProducts" :key="p.id" :value="p.id">
+                <option v-for="p in displayedPhysicalProducts" :key="p.id" :value="p.id">
                   {{ p.name }} (Harga: {{ formatRupiah(p.hargaJual) }} | Stok: {{ p.stock ?? 0 }})
                 </option>
               </select>
             </div>
           </div>
 
-          <!-- Layanan Digital (Pulsa / Paket Data / Token PLN) -->
-          <div v-else-if="['pulsa', 'data', 'token_pln'].includes(layanan)" class="cascading-fields">
+          <!-- Layanan Digital (Pulsa / Paket Data / Token PLN / Game) -->
+          <div v-else-if="currentLayananDef?.group === 'penjualan' && currentLayananDef.needsSourceAccount" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Akun Server Pulsa Catatan</label>
               <select
@@ -215,20 +222,30 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label">Nomor Tujuan / ID Pelanggan</label>
+              <label class="form-label">
+                Nomor Tujuan / ID Pelanggan
+                <span v-if="layanan === 'pulsa'" class="optional-tag">(Opsional)</span>
+              </label>
               <input
                 ref="referenceNoRef"
                 v-model="referenceNo"
                 type="tel"
                 class="form-input"
-                placeholder="0812xxxx atau No. Meter"
-                required
+                :placeholder="layanan === 'pulsa' ? '0812xxxx (opsional)' : (layanan === 'game' ? 'ID Game / Akun Tujuan' : (layanan === 'token_pln' ? 'No. Meter / ID Pelanggan' : '0812xxxx'))"
+                :required="layanan !== 'pulsa'"
                 @keydown.enter.prevent="onReferenceNoEnter"
               />
             </div>
 
             <div class="form-group">
               <label class="form-label">Pilih Produk Digital dari Master</label>
+              <input
+                v-model="productFilterQuery"
+                type="text"
+                class="form-input mb-2"
+                placeholder="Cari produk..."
+                data-testid="filter-digital-product"
+              />
               <select
                 ref="productSelectRef"
                 v-model="selectedProductId"
@@ -237,11 +254,11 @@
                 @change="onProductSelected"
               >
                 <option disabled value="">-- Pilih Produk Master --</option>
-                <option v-for="p in availableDigitalProducts" :key="p.id" :value="p.id">
+                <option v-for="p in displayedDigitalProducts" :key="p.id" :value="p.id">
                   {{ p.label }}
                 </option>
               </select>
-              <span v-if="availableDigitalProducts.length === 0" class="form-hint-warning">
+              <span v-if="displayedDigitalProducts.length === 0" class="form-hint-warning">
                 Belum ada produk digital. Minta Owner/Admin mengisi Master Produk atau menyinkronkan katalog dari Master Produk.
               </span>
             </div>
@@ -286,8 +303,8 @@
             v-model="nominal"
             v-model:fee="fee"
             v-model:feePaidBy="feePaidBy"
-            :hide-admin="['voucher', 'perdana', 'aksesoris', 'pulsa', 'data', 'token_pln', 'operasional'].includes(layanan)"
-            :hide-fee-paid-by="layanan === 'jasa_transfer'"
+            :hide-admin="!currentLayananDef?.hasFee"
+            :hide-fee-paid-by="!currentLayananDef?.hasFeePaidBy"
             :is-auto-fee="Boolean(matchedRule && !feeManualOverride)"
             :fee-manual-override="feeManualOverride"
             @update:model-value="onNominalChanged"
@@ -298,7 +315,7 @@
 
           <!-- Banner Tarif / Peringatan Tarif Belum Ada -->
           <FeeBadge
-            v-if="['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob', 'jasa_transfer'].includes(layanan)"
+            v-if="currentLayananDef?.hasFee"
             :no-rule-banner="nominal > 0 && !matchedRule && fee === 0"
             :rule-name="matchedRule ? `Admin Rp ${fee.toLocaleString('id-ID')}` : undefined"
           />
@@ -323,8 +340,8 @@
         </div>
 
         <!-- 4. Status Pembayaran (Lunas / Hutang) -->
-        <div v-if="layanan !== 'operasional'" class="form-section card-section">
-          <div v-if="layanan !== 'jasa_transfer'" class="form-group">
+        <div v-if="currentLayananDef?.supportsHutang" class="form-section card-section">
+          <div class="form-group">
             <label class="form-label">Status Bayar</label>
             <div class="status-toggle">
               <button
@@ -444,8 +461,8 @@
           </div>
         </div>
 
-        <!-- 5. Tombol Simpan Sticky di Bawah (Tanpa Popup Summary Preview) -->
-        <div class="sticky-footer">
+        <!-- 5. Tombol Simpan Sticky di Bawah (Muncul hanya bila ada isi nominal / produk) -->
+        <div v-if="showSaveBar" class="sticky-footer" data-testid="sticky-footer-bar">
           <button
             ref="submitBtnRef"
             type="submit"
@@ -465,21 +482,10 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
-  ArrowRightLeft,
-  Banknote,
-  Smartphone,
-  Wallet,
-  Receipt,
-  Ticket,
-  Package,
-  Layers,
-  Zap,
-  TrendingDown,
   AlertCircle,
   ChevronDown,
   Search,
   Check,
-  Landmark,
 } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import MoneyInput from '../components/MoneyInput.vue';
@@ -490,8 +496,10 @@ import { getTodayWitaString, parseWitaDateToEpoch } from '../utils/datePeriod';
 import { db } from '../db/database';
 import { feeRuleService } from '../services/feeRuleService';
 import { transactionService } from '../services/transactionService';
-import type { Account, Product, Customer, AdminFeeRule, ProductCatalogEntry } from '../db/types';
+import type { Account, Product, Customer, AdminFeeRule, ProductCatalogEntry, ProductCategory } from '../db/types';
 import { AppError } from '../core/errors';
+import { staffLayanan, getLayananDef } from '../core/layanan';
+import { sortProductsForLayanan } from '../utils/productSort';
 
 const router = useRouter();
 const route = useRoute();
@@ -523,29 +531,19 @@ const note = ref<string>('');
 
 const paymentAccountRef = ref<HTMLSelectElement | null>(null);
 
+const currentLayananDef = computed(() => getLayananDef(layanan.value));
+
 const hasPaymentAccount = computed(() => {
-  return [
-    'transfer',
-    'tarik_tunai',
-    'topup_ewallet',
-    'ppob',
-    'pulsa',
-    'data',
-    'token_pln',
-    'voucher',
-    'perdana',
-    'aksesoris',
-    'pemasukan_lain',
-  ].includes(layanan.value);
+  return Boolean(currentLayananDef.value && currentLayananDef.value.paymentRule !== 'none');
 });
 
 const availablePaymentAccounts = computed<Account[]>(() => {
   if (!hasPaymentAccount.value) return [];
-  const srv = layanan.value;
-  if (srv === 'transfer') {
+  const rule = currentLayananDef.value?.paymentRule;
+  if (rule === 'kas') {
     return activeAccounts.value.filter((a) => a.type === 'kas');
   }
-  if (srv === 'tarik_tunai') {
+  if (rule === 'kas-bank') {
     return activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'kas');
   }
   return activeAccounts.value.filter(
@@ -609,23 +607,10 @@ const customerSelectRef = ref<HTMLSelectElement | null>(null);
 const noteRef = ref<HTMLInputElement | null>(null);
 const submitBtnRef = ref<HTMLButtonElement | null>(null);
 
-const primaryServices = [
-  { code: 'transfer', label: 'Transfer', icon: ArrowRightLeft, keywords: ['tf', 'kirim uang', 'bank', 'trans'] },
-  { code: 'tarik_tunai', label: 'Tarik Tunai', icon: Banknote, keywords: ['tarik tunai', 'tarik', 'tunai', 'trans', 'cash out'] },
-  { code: 'jasa_transfer', label: 'Jasa Transfer', icon: Landmark, keywords: ['jasa transfer', 'edc', 'transfer edc', 'kirim uang edc'] },
-  { code: 'topup_ewallet', label: 'E-Wallet', icon: Wallet, keywords: ['dana', 'gopay', 'ovo', 'shopeepay', 'linkaja', 'ewallet'] },
-  { code: 'pulsa', label: 'Pulsa', icon: Smartphone, keywords: ['pul', 'reguler', 'telepon'] },
-  { code: 'data', label: 'Paket Data', icon: Layers, keywords: ['kuota', 'paket data', 'internet', 'paket'] },
-  { code: 'token_pln', label: 'Token PLN', icon: Zap, keywords: ['listrik', 'pln', 'token', 'stroom'] },
-  { code: 'voucher', label: 'Voucher', icon: Ticket, keywords: ['voucher fisik', 'kuota voucher'] },
-  { code: 'perdana', label: 'Perdana', icon: Package, keywords: ['kartu perdana', 'kartu', 'sim card'] },
-  { code: 'aksesoris', label: 'Aksesoris', icon: Package, keywords: ['kabel', 'charger', 'casing', 'headset'] },
-  { code: 'ppob', label: 'Tagihan PPOB', icon: Receipt, keywords: ['bpjs', 'pdam', 'tagihan', 'angsuran'] },
-  { code: 'operasional', label: 'Operasional', icon: TrendingDown, keywords: ['biaya', 'beban', 'pengeluaran'] },
-];
+const primaryServices = staffLayanan();
 
 const selectedServiceObj = computed(() => {
-  return primaryServices.find((s) => s.code === layanan.value) || primaryServices[0];
+  return primaryServices.find((s) => s.code === layanan.value) || currentLayananDef.value || primaryServices[0];
 });
 
 const filteredServices = computed(() => {
@@ -650,11 +635,13 @@ const serverAccounts = computed(() =>
   activeAccounts.value.filter((a) => a.type === 'server_pulsa')
 );
 
-const availablePhysicalProducts = computed(() =>
-  productList.value.filter(
-    (p) => p.isActive && (p.category === 'voucher' || p.category === 'perdana' || p.category === 'aksesoris')
-  )
-);
+const availablePhysicalProducts = computed(() => {
+  const cats = currentLayananDef.value?.productCategories ?? [];
+  const filtered = productList.value.filter(
+    (p) => p.isActive && cats.includes(p.category)
+  );
+  return sortProductsForLayanan(filtered, layanan.value);
+});
 
 export interface DigitalProductDisplay {
   id: string;
@@ -662,14 +649,15 @@ export interface DigitalProductDisplay {
   hargaJual: number;
   isCatalog: boolean;
   label: string;
-  category: string;
+  category: ProductCategory;
   operator?: string;
   externalProductRef?: string;
 }
 
 const availableDigitalProducts = computed<DigitalProductDisplay[]>(() => {
+  const cats = currentLayananDef.value?.productCategories ?? [];
   const localDigital = productList.value.filter(
-    (p) => p.isActive && (p.category === 'pulsa' || p.category === 'data' || p.category === 'token_pln')
+    (p) => p.isActive && cats.includes(p.category)
   );
 
   const overriddenRefs = new Set(
@@ -691,7 +679,7 @@ const availableDigitalProducts = computed<DigitalProductDisplay[]>(() => {
     .filter(
       (c) =>
         c.isActive &&
-        (c.category === 'pulsa' || c.category === 'token_pln' || c.category === 'game') &&
+        cats.includes(c.category) &&
         !overriddenRefs.has(c.id)
     )
     .map((c) => ({
@@ -704,7 +692,48 @@ const availableDigitalProducts = computed<DigitalProductDisplay[]>(() => {
       operator: c.operator,
     }));
 
-  return [...localFormatted, ...catalogDigital];
+  const merged = [...localFormatted, ...catalogDigital];
+  return sortProductsForLayanan(merged, layanan.value);
+});
+
+// Filter teks di dropdown produk (b33)
+const productFilterQuery = ref('');
+
+const displayedPhysicalProducts = computed(() => {
+  const q = productFilterQuery.value.trim().toLowerCase();
+  const all = availablePhysicalProducts.value;
+  if (!q) return all;
+  return all.filter((p) => {
+    if (p.id === selectedProductId.value) return true; // produk terpilih selalu tampil
+    const matchName = p.name.toLowerCase().includes(q);
+    const matchOp = (p.operator || '').toLowerCase().includes(q);
+    return matchName || matchOp;
+  });
+});
+
+const displayedDigitalProducts = computed(() => {
+  const q = productFilterQuery.value.trim().toLowerCase();
+  const all = availableDigitalProducts.value;
+  if (!q) return all;
+  return all.filter((p) => {
+    if (p.id === selectedProductId.value) return true; // produk terpilih selalu tampil
+    const matchName = p.name.toLowerCase().includes(q);
+    const matchOp = (p.operator || '').toLowerCase().includes(q);
+    const matchLabel = p.label.toLowerCase().includes(q);
+    return matchName || matchOp || matchLabel;
+  });
+});
+
+// Footer Simpan Transaksi baru muncul setelah nominal diisi atau produk berharga dipilih (b33)
+const showSaveBar = computed(() => {
+  if (nominal.value > 0) return true;
+  if (selectedProductId.value) {
+    const phys = availablePhysicalProducts.value.find((p) => p.id === selectedProductId.value);
+    if (phys && (phys.hargaJual ?? 0) > 0) return true;
+    const digi = availableDigitalProducts.value.find((p) => p.id === selectedProductId.value);
+    if (digi && (digi.hargaJual ?? 0) > 0) return true;
+  }
+  return false;
 });
 
 onMounted(async () => {
@@ -820,6 +849,7 @@ interface FocusableElement {
 
 function focusElement(el: HTMLElement | FocusableElement | null | undefined) {
   if (!el) return;
+  if (el === submitBtnRef.value && !showSaveBar.value) return;
   nextTick(() => {
     if ('focusNominal' in el && typeof el.focusNominal === 'function') {
       el.focusNominal();
@@ -838,13 +868,14 @@ function focusElement(el: HTMLElement | FocusableElement | null | undefined) {
 
 function focusNextFieldAfterService(code: string) {
   nextTick(() => {
+    const def = getLayananDef(code);
     if (code === 'jasa_transfer') {
       focusElement(referenceNoRef.value);
     } else if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(code)) {
       focusElement(sourceAccountRef.value);
-    } else if (['voucher', 'perdana', 'aksesoris'].includes(code)) {
+    } else if (def?.group === 'penjualan' && !def.needsSourceAccount) {
       focusElement(productSelectRef.value);
-    } else if (['pulsa', 'data', 'token_pln'].includes(code)) {
+    } else if (def?.group === 'penjualan' && def.needsSourceAccount) {
       if (sourceAccountId.value) {
         focusElement(referenceNoRef.value);
       } else {
@@ -858,11 +889,12 @@ function focusNextFieldAfterService(code: string) {
 
 function onSourceAccountChanged() {
   nextTick(() => {
+    const def = currentLayananDef.value;
     if (['transfer', 'topup_ewallet', 'ppob'].includes(layanan.value)) {
       focusElement(referenceNoRef.value);
     } else if (layanan.value === 'tarik_tunai') {
       focusElement(moneyInputRef.value);
-    } else if (['pulsa', 'data', 'token_pln'].includes(layanan.value)) {
+    } else if (def?.group === 'penjualan' && def.needsSourceAccount) {
       focusElement(referenceNoRef.value);
     } else if (layanan.value === 'operasional') {
       focusElement(noteRef.value);
@@ -871,7 +903,8 @@ function onSourceAccountChanged() {
 }
 
 function onReferenceNoEnter() {
-  if (['pulsa', 'data', 'token_pln'].includes(layanan.value)) {
+  const def = currentLayananDef.value;
+  if (def?.group === 'penjualan' && def.needsSourceAccount) {
     focusElement(productSelectRef.value);
   } else {
     focusElement(moneyInputRef.value);
@@ -881,13 +914,15 @@ function onReferenceNoEnter() {
 function selectService(code: string) {
   layanan.value = code;
   selectedProductId.value = '';
+  productFilterQuery.value = '';
   errorMessage.value = '';
-  if (code === 'jasa_transfer') {
+  const def = getLayananDef(code);
+  if (!def?.touchesBalances || code === 'jasa_transfer') {
     paymentAccountId.value = '';
     paymentStatus.value = 'lunas';
     feePaidBy.value = 'cash';
   }
-  if (['pulsa', 'data', 'token_pln'].includes(code)) {
+  if (def?.group === 'penjualan' && def.needsSourceAccount) {
     const defaultServer = activeAccounts.value.find((a) => a.type === 'server_pulsa');
     if (defaultServer) sourceAccountId.value = defaultServer.id;
   }
@@ -906,7 +941,10 @@ function selectService(code: string) {
 }
 
 watch(layanan, (newCode) => {
-  if (newCode === 'jasa_transfer') {
+  productFilterQuery.value = '';
+  selectedProductId.value = '';
+  const def = getLayananDef(newCode);
+  if (!def?.touchesBalances || newCode === 'jasa_transfer') {
     paymentAccountId.value = '';
     paymentStatus.value = 'lunas';
     feePaidBy.value = 'cash';
@@ -918,6 +956,10 @@ watch(layanan, (newCode) => {
       const fallback = availableTarikTunaiSourceAccounts.value[0];
       sourceAccountId.value = fallback ? fallback.id : '';
     }
+  }
+  if (def?.group === 'penjualan' && def.needsSourceAccount) {
+    const defaultServer = activeAccounts.value.find((a) => a.type === 'server_pulsa');
+    if (defaultServer) sourceAccountId.value = defaultServer.id;
   }
   const validIds = availablePaymentAccounts.value.map((a) => a.id);
   if (!validIds.includes(paymentAccountId.value)) {

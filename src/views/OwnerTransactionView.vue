@@ -339,13 +339,15 @@ import { accountService } from '../services/accountService';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah, parseRupiah } from '../utils/format';
 import { AppError } from '../core/errors';
+import { ownerLayanan } from '../core/layanan';
 import type { Account, Product } from '../db/types';
 
 const router = useRouter();
 const authStore = useAuthStore();
 
+const ownerServiceDefs = ownerLayanan();
 const ownerTabs = [
-  { key: 'pindah_dana', label: 'Pindah Dana' },
+  { key: 'pindah_dana', label: ownerServiceDefs.find((l) => l.code === 'pindah_dana')?.label || 'Pindah Dana' },
   { key: 'deposit', label: 'Top-Up Provider / Server' },
   { key: 'pembelian_stok', label: 'Beli Aksesoris / Stok' },
   { key: 'operasional', label: 'Belanja Lain / Operasional' },

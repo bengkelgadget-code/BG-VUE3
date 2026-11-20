@@ -8,6 +8,7 @@ import { stockService } from './stockService';
 import { authService } from './authService';
 import { accountService } from './accountService';
 import { getWitaDateString } from '../utils/datePeriod';
+import { getLayananDef, ownerLayanan } from '../core/layanan';
 
 export interface CartItemInput {
   productId: string;
@@ -77,13 +78,8 @@ export class TransactionService {
       throw new AppError('Biaya admin harus bilangan bulat >= Rp0.');
     }
 
-    const isOwnerService = [
-      'pindah_dana',
-      'deposit_server',
-      'deposit_provider',
-      'pembelian_stok',
-      'operasional',
-    ].includes(input.layanan);
+    const def = getLayananDef(input.layanan);
+    const isOwnerService = ownerLayanan().some((o) => o.code === input.layanan);
 
     if (!opts.shiftId && !isOwnerService) {
       throw new AppError('Transaksi kasir membutuhkan shift aktif.');
@@ -103,10 +99,12 @@ export class TransactionService {
       }
     }
 
-    // Validasi dan penurunan akun (lewati jika jasa_transfer)
+    // Validasi dan penurunan akun (lewati jika jasa_transfer / tidak menyentuh saldo)
     let paymentAccountId: string | undefined = undefined;
 
-    if (input.layanan !== 'jasa_transfer') {
+    const touchesBalances = def ? def.touchesBalances : input.layanan !== 'jasa_transfer';
+
+    if (touchesBalances) {
       // Validasi akun Tarik Tunai (b30)
       if (input.layanan === 'tarik_tunai' && input.sourceAccountId) {
         const srcAcc = await db.accounts.get(input.sourceAccountId);
@@ -121,11 +119,12 @@ export class TransactionService {
         if (!payAcc || !payAcc.isActive) {
           throw new AppError('Akun pembayaran tidak ditemukan atau tidak aktif.');
         }
-        if (input.layanan === 'transfer') {
+        const rule = def?.paymentRule;
+        if (rule === 'kas' || input.layanan === 'transfer') {
           if (payAcc.type !== 'kas') {
             throw new AppError('Diterima Di Transfer hanya Kas Kecil atau Kas Besar.');
           }
-        } else if (input.layanan === 'tarik_tunai') {
+        } else if (rule === 'kas-bank' || input.layanan === 'tarik_tunai') {
           if (payAcc.type !== 'kas' && payAcc.type !== 'bank') {
             throw new AppError('Diterima Di Tarik Tunai hanya Kas atau Rekening Bank.');
           }
@@ -138,7 +137,7 @@ export class TransactionService {
         paymentAccountId = payAcc.id;
       } else {
         // 9 Nov 2026: Turunkan paymentAccountId otomatis dari cara bayar admin (feePaidBy)
-        const hasFeePaidBy = ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(input.layanan);
+        const hasFeePaidBy = def ? def.hasFeePaidBy : ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(input.layanan);
 
         if (input.layanan !== 'tarik_tunai' && hasFeePaidBy && input.feePaidBy === 'debit_rekening') {
           if (!input.sourceAccountId) {
@@ -275,7 +274,7 @@ export class TransactionService {
     let effectiveSourceAccountId: string | undefined = undefined;
     let deltas: BalanceDelta[] = [];
 
-    if (input.layanan !== 'jasa_transfer') {
+    if (touchesBalances) {
       effectiveSourceAccountId = input.sourceAccountId || (isOwnerService ? (input as unknown as { paymentAccountId?: string }).paymentAccountId : undefined);
       deltas = balanceService.computeDeltas({
         layanan: input.layanan,
@@ -306,16 +305,16 @@ export class TransactionService {
       layanan: input.layanan,
       shiftId: opts.shiftId || null,
       userId: opts.actorUserId,
-      accountId: input.layanan === 'jasa_transfer' ? undefined : paymentAccountId,
-      sourceAccountId: input.layanan === 'jasa_transfer' ? undefined : effectiveSourceAccountId,
-      destAccountId: input.layanan === 'jasa_transfer' ? undefined : input.destAccountId,
+      accountId: !touchesBalances ? undefined : paymentAccountId,
+      sourceAccountId: !touchesBalances ? undefined : effectiveSourceAccountId,
+      destAccountId: !touchesBalances ? undefined : input.destAccountId,
       nominal: input.nominal,
       fee: input.fee,
       feePaidBy: input.feePaidBy,
       feeRuleId: input.feeRuleId,
       feeManualOverride: input.feeManualOverride,
       paymentMethod: input.paymentMethod,
-      paymentStatus: input.layanan === 'jasa_transfer' ? 'lunas' : paymentStatus,
+      paymentStatus: !touchesBalances ? 'lunas' : paymentStatus,
       date,
       dateChangeReason: input.dateChangeReason?.trim(),
       note: input.note?.trim(),
@@ -615,7 +614,8 @@ export class TransactionService {
       throw new AppError('Status transaksi tidak dapat diubah melalui menu edit.');
     }
 
-    if (tx.layanan === 'jasa_transfer' && (input.sourceAccountId || input.paymentAccountId)) {
+    const txDef = getLayananDef(tx.layanan);
+    if ((!txDef?.touchesBalances || tx.layanan === 'jasa_transfer') && (input.sourceAccountId || input.paymentAccountId)) {
       throw new AppError('Jasa Transfer tidak menggunakan akun.');
     }
 
