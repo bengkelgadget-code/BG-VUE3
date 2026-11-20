@@ -102,6 +102,14 @@ export class TransactionService {
       }
     }
 
+    // Validasi akun Tarik Tunai (b30)
+    if (input.layanan === 'tarik_tunai' && input.sourceAccountId) {
+      const srcAcc = await db.accounts.get(input.sourceAccountId);
+      if (!srcAcc || (srcAcc.type !== 'kas' && srcAcc.type !== 'bank')) {
+        throw new AppError('Sumber dana Tarik Tunai hanya Kas atau Rekening Bank.');
+      }
+    }
+
     // 9 Nov 2026: Turunkan paymentAccountId otomatis dari cara bayar admin (feePaidBy)
     let paymentAccountId: string;
     const hasFeePaidBy = ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(input.layanan);
@@ -594,6 +602,9 @@ export class TransactionService {
         if (!srcAcc || !srcAcc.isActive) {
           throw new AppError('Akun sumber dana baru tidak ditemukan atau tidak aktif.');
         }
+        if (tx.layanan === 'tarik_tunai' && srcAcc.type !== 'kas' && srcAcc.type !== 'bank') {
+          throw new AppError('Sumber dana Tarik Tunai hanya Kas atau Rekening Bank.');
+        }
         if (tx.layanan === 'pindah_dana' && input.sourceAccountId === tx.destAccountId) {
           throw new AppError('Akun sumber dana tidak boleh sama dengan akun tujuan.');
         }
@@ -607,6 +618,9 @@ export class TransactionService {
         const payAcc = await db.accounts.get(input.paymentAccountId);
         if (!payAcc || !payAcc.isActive) {
           throw new AppError('Akun pembayaran baru tidak ditemukan atau tidak aktif.');
+        }
+        if (tx.layanan === 'tarik_tunai' && payAcc.type !== 'kas' && payAcc.type !== 'bank') {
+          throw new AppError('Diterima Di Tarik Tunai hanya Kas atau Rekening Bank.');
         }
       }
     }

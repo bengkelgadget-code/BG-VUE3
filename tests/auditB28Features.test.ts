@@ -484,10 +484,10 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       const sourceSelect = wrapper.find('[data-testid="edit-select-source-account"]');
       expect((sourceSelect.element as HTMLSelectElement).value).toBe(kasKecil.id);
 
-      // Opsi "Diterima Di" hanya akun tipe kas (Kas Kecil, Kas Besar, Kas Laci, Kas Toko) - bukan Bank BCA
+      // Opsi "Diterima Di" untuk Tarik Tunai: kas + bank (b30)
       const paymentOptions = wrapper.findAll('[data-testid="edit-select-payment-account"] option');
       const paymentOptionValues = paymentOptions.map((o) => (o.element as HTMLOptionElement).value);
-      expect(paymentOptionValues).not.toContain(bankBca.id);
+      expect(paymentOptionValues).toContain(bankBca.id);
       expect(paymentOptionValues).toContain(kasLaci.id);
 
       wrapper.unmount();

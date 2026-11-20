@@ -71,6 +71,7 @@
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
   /* Dark Mode Palette */
   --bg-app: #0F1115;
   --surface-card: #1C1E22;
@@ -146,6 +147,48 @@ body {
 /* Tabular numbers for financial integrity */
 .tabular-nums, .money-display {
   font-variant-numeric: tabular-nums;
+}
+
+/* Shared Form Controls (b30) */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.form-select,
+.form-input {
+  height: 46px;
+  padding: 0 12px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border-color);
+  background: var(--surface-card);
+  color: var(--text-main);
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  color-scheme: light dark;
+}
+
+[data-theme='dark'] .form-select,
+[data-theme='dark'] .form-input {
+  color-scheme: dark;
+}
+
+.form-select:focus,
+.form-input:focus {
+  border-color: var(--border-focus);
+}
+
+.form-select option {
+  background-color: var(--surface-card);
+  color: var(--text-main);
 }
 
 /* Reduced motion preference */

@@ -113,8 +113,13 @@
                 required
                 @change="onSourceAccountChanged"
               >
-                <option disabled value="">-- Pilih Akun Bank / E-Wallet --</option>
-                <option v-for="acc in availableBankAccounts" :key="acc.id" :value="acc.id">
+                <option v-if="layanan === 'tarik_tunai'" disabled value="">-- Pilih Kas / Rekening Bank --</option>
+                <option v-else disabled value="">-- Pilih Akun Bank / E-Wallet --</option>
+                <option
+                  v-for="acc in (layanan === 'tarik_tunai' ? availableTarikTunaiSourceAccounts : availableBankAccounts)"
+                  :key="acc.id"
+                  :value="acc.id"
+                >
                   {{ acc.name }} (Saldo: {{ formatRupiah(accountBalances[acc.id] || acc.initialBalance) }})
                 </option>
               </select>
@@ -408,7 +413,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
   ArrowRightLeft,
@@ -527,6 +532,10 @@ const availableBankAccounts = computed(() =>
   activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'ewallet' || a.type === 'kas')
 );
 
+const availableTarikTunaiSourceAccounts = computed(() =>
+  activeAccounts.value.filter((a) => a.type === 'kas' || a.type === 'bank')
+);
+
 const serverAccounts = computed(() =>
   activeAccounts.value.filter((a) => a.type === 'server_pulsa')
 );
@@ -616,6 +625,15 @@ onMounted(async () => {
   const defaultServer = activeAccounts.value.find((a) => a.type === 'server_pulsa');
   if (defaultServer && (layanan.value === 'pulsa' || layanan.value === 'data' || layanan.value === 'token_pln')) {
     sourceAccountId.value = defaultServer.id;
+  }
+  if (layanan.value === 'tarik_tunai') {
+    const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
+    if (!curAcc || curAcc.type === 'ewallet') {
+      const fallback = availableTarikTunaiSourceAccounts.value[0];
+      if (fallback) {
+        sourceAccountId.value = fallback.id;
+      }
+    }
   }
 
   // Cek shift aktif pengguna
@@ -755,8 +773,25 @@ function selectService(code: string) {
     const defaultServer = activeAccounts.value.find((a) => a.type === 'server_pulsa');
     if (defaultServer) sourceAccountId.value = defaultServer.id;
   }
+  if (code === 'tarik_tunai') {
+    const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
+    if (!curAcc || curAcc.type === 'ewallet') {
+      const fallback = availableTarikTunaiSourceAccounts.value[0];
+      sourceAccountId.value = fallback ? fallback.id : '';
+    }
+  }
   recalculateFee();
 }
+
+watch(layanan, (newCode) => {
+  if (newCode === 'tarik_tunai') {
+    const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
+    if (!curAcc || curAcc.type === 'ewallet') {
+      const fallback = availableTarikTunaiSourceAccounts.value[0];
+      sourceAccountId.value = fallback ? fallback.id : '';
+    }
+  }
+});
 
 async function onNominalChanged(val: number) {
   nominal.value = val;
@@ -1180,36 +1215,6 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.form-select,
-.form-input {
-  height: 46px;
-  padding: 0 12px;
-  border-radius: var(--radius-btn);
-  border: 1px solid var(--border-color);
-  background: var(--surface-card);
-  color: var(--text-main);
-  font-size: 14px;
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-
-.form-select:focus,
-.form-input:focus {
-  border-color: var(--border-focus);
 }
 
 .form-hint,

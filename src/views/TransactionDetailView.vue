@@ -391,7 +391,10 @@ const canEditAccounts = computed(() => {
 const availableSourceAccounts = computed(() => {
   if (!transaction.value) return [];
   const srv = transaction.value.layanan;
-  if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(srv)) {
+  if (srv === 'tarik_tunai') {
+    return activeAccounts.value.filter((a) => a.type === 'kas' || a.type === 'bank');
+  }
+  if (['transfer', 'topup_ewallet', 'ppob'].includes(srv)) {
     return activeAccounts.value.filter((a) => ['bank', 'ewallet', 'kas'].includes(a.type));
   }
   if (['pulsa', 'data', 'token_pln'].includes(srv)) {
@@ -404,6 +407,10 @@ const availableSourceAccounts = computed(() => {
 });
 
 const availablePaymentAccounts = computed(() => {
+  if (!transaction.value) return [];
+  if (transaction.value.layanan === 'tarik_tunai') {
+    return activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'kas');
+  }
   return activeAccounts.value.filter((a) => a.type === 'kas');
 });
 
@@ -977,29 +984,6 @@ async function handleVoid() {
   font-size: 12px;
   color: var(--text-secondary);
   margin: 0;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.form-input {
-  height: 44px;
-  padding: 0 12px;
-  border-radius: var(--radius-btn);
-  border: 1px solid var(--border-color);
-  background: var(--surface-card);
-  color: var(--text-main);
-  font-size: 14px;
-  outline: none;
 }
 
 .approval-error,
