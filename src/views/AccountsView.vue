@@ -2,7 +2,7 @@
   <AppScaffold>
     <div class="accounts-view-container">
       <div class="view-header">
-        <h2 class="page-title">Akun Saldo (5 Kelompok)</h2>
+        <h2 class="page-title">Akun Saldo ({{ accounts.length }} Akun)</h2>
         <router-link v-if="authStore.isAdmin" to="/accounts/add" class="btn-add">
           + Tambah Akun
         </router-link>
@@ -24,35 +24,46 @@
         </template>
       </EmptyState>
 
-      <div v-else class="account-list">
-        <div
-          v-for="acc in accounts"
-          :key="acc.id"
-          class="account-item-card"
-          @click="openDetail(acc.id)"
+      <div v-else class="account-groups">
+        <section
+          v-for="group in groupedAccounts"
+          :key="group.type"
+          class="account-group"
         >
-          <div class="acc-main">
-            <span class="acc-name">{{ acc.name }}</span>
-            <span class="acc-type-badge">
-              {{ acc.type === 'server_pulsa' || acc.type === 'provider_app' ? `${acc.type} (catatan)` : acc.type }}
-            </span>
-            <span v-if="acc.accountNo" class="acc-meta">No: {{ acc.accountNo }}</span>
-          </div>
+          <h3 class="group-title">
+            {{ group.label }} ({{ group.accounts.length }})
+          </h3>
+          <div class="account-list">
+            <div
+              v-for="acc in group.accounts"
+              :key="acc.id"
+              class="account-item-card"
+              @click="openDetail(acc.id)"
+            >
+              <div class="acc-main">
+                <span class="acc-name">{{ acc.name }}</span>
+                <span class="acc-type-badge">
+                  {{ acc.type === 'server_pulsa' || acc.type === 'provider_app' ? `${acc.type} (catatan)` : acc.type }}
+                </span>
+                <span v-if="acc.accountNo" class="acc-meta">No: {{ acc.accountNo }}</span>
+              </div>
 
-          <div class="acc-balance-col">
-            <span class="acc-balance-amount money-display">
-              {{ formatRupiah(balances[acc.id] ?? acc.initialBalance) }}
-            </span>
-            <span class="acc-detail-link">Lihat Mutasi →</span>
+              <div class="acc-balance-col">
+                <span class="acc-balance-amount money-display">
+                  {{ formatRupiah(balances[acc.id] ?? 0) }}
+                </span>
+                <span class="acc-detail-link">Lihat Mutasi →</span>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   </AppScaffold>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import AppScaffold from '../components/AppScaffold.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -60,13 +71,48 @@ import { db } from '../db/database';
 import { accountService } from '../services/accountService';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah } from '../utils/format';
+import { ACCOUNT_TYPE_LABELS, compareAccounts } from '../utils/productSort';
 import type { Account } from '../db/types';
+
+type AccountType = Account['type'];
 
 const router = useRouter();
 const authStore = useAuthStore();
 
 const accounts = ref<Account[]>([]);
 const balances = ref<Record<string, number>>({});
+
+const groupedAccounts = computed(() => {
+  const groups: { type: AccountType; label: string; accounts: Account[] }[] = [];
+  const typeOrder: AccountType[] = ['kas', 'bank', 'ewallet', 'server_pulsa', 'provider_app'];
+
+  for (const type of typeOrder) {
+    const matching = accounts.value
+      .filter((a) => a.type === type)
+      .sort(compareAccounts);
+    if (matching.length > 0) {
+      groups.push({
+        type,
+        label: ACCOUNT_TYPE_LABELS[type] || type.toUpperCase(),
+        accounts: matching,
+      });
+    }
+  }
+
+  // Akun dengan type yang mungkin belum terdaftar di typeOrder standar
+  const unclassified = accounts.value
+    .filter((a) => !typeOrder.includes(a.type))
+    .sort(compareAccounts);
+  if (unclassified.length > 0) {
+    groups.push({
+      type: 'lainnya' as AccountType,
+      label: 'LAINNYA',
+      accounts: unclassified,
+    });
+  }
+
+  return groups;
+});
 
 onMounted(async () => {
   await loadData();
@@ -114,6 +160,28 @@ function openDetail(id: string) {
 .section-intro {
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.account-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.account-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin: 0;
+  padding: 0 2px;
 }
 
 .account-list {

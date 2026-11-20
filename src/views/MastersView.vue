@@ -2,10 +2,27 @@
   <AppScaffold>
     <div class="masters-container">
       <div class="view-header">
-        <h2 class="page-title">Master Produk</h2>
-        <router-link to="/masters/product/add" class="btn-add">
-          + Tambah Produk
-        </router-link>
+        <div class="header-title-block">
+          <h2 class="page-title">Master Produk</h2>
+          <span v-if="lastSyncText" class="sync-timestamp" data-testid="sync-timestamp">{{ lastSyncText }}</span>
+        </div>
+        <div class="header-actions">
+          <button
+            v-if="authStore.isAdmin"
+            type="button"
+            class="btn-sync"
+            :disabled="isSyncing"
+            title="Sinkronkan Katalog Server Pulsa"
+            data-testid="btn-sync-catalog"
+            @click="() => handleManualSync(false)"
+          >
+            <RefreshCw class="sync-icon" :class="{ 'spin-anim': isSyncing }" />
+            <span>{{ isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Katalog' }}</span>
+          </button>
+          <router-link to="/masters/product/add" class="btn-add">
+            + Tambah Produk
+          </router-link>
+        </div>
       </div>
 
       <!-- Umpan balik aktivasi produk (b21-D): jangan gagal diam-diam -->
@@ -16,7 +33,20 @@
         {{ activateErrorMessage }}
       </div>
 
-      <!-- Category Filter Tabs -->
+      <!-- Umpan balik sinkronisasi katalog -->
+      <div v-if="syncMessage" class="activate-banner success" data-testid="sync-success">
+        {{ syncMessage }}
+      </div>
+      <div v-if="syncError" class="activate-banner error" data-testid="sync-error">
+        <div class="sync-error-content">
+          <span>{{ syncError }}</span>
+          <button type="button" class="btn-retry-sync" @click="() => handleManualSync(false)">
+            Coba Lagi
+          </button>
+        </div>
+      </div>
+
+      <!-- Category Filter Tabs: pulsa, token_pln, game, voucher, perdana, aksesoris (b24) -->
       <div class="category-tabs">
         <button
           v-for="cat in categories"
@@ -30,14 +60,14 @@
         </button>
       </div>
 
-      <!-- Pencarian produk (b22): ganti checkbox tampilkan nonaktif -->
+      <!-- Pencarian produk (b22) -->
       <div class="search-box">
         <Search class="search-icon" />
         <input
           v-model="searchQuery"
           type="text"
           class="search-input"
-          placeholder="Cari nama produk…"
+          placeholder="Cari nama produk atau operator…"
           data-testid="search-produk"
           aria-label="Cari produk"
         />
@@ -54,6 +84,16 @@
         </button>
       </div>
 
+      <!-- Bantuan saat produk lokal kosong tapi katalog tersedia -->
+      <div
+        v-if="localProducts.length === 0 && catalogEntries.length > 0 && filteredProducts.length > 0"
+        class="catalog-helper-banner"
+        data-testid="catalog-helper-banner"
+      >
+        💡 Ketuk produk katalog untuk mengatur modal & harga jual.
+      </div>
+
+      <!-- Empty State: Hasil Pencarian Kosong -->
       <EmptyState
         v-if="filteredProducts.length === 0 && searchQuery.trim() !== ''"
         title="Tidak Ada Produk yang Cocok"
@@ -71,50 +111,89 @@
         </template>
       </EmptyState>
 
+      <!-- Empty State: Belum Ada Produk Master (Lokal & Katalog Kosong) -->
+      <EmptyState
+        v-else-if="filteredProducts.length === 0 && localProducts.length === 0 && catalogEntries.length === 0"
+        title="Belum Ada Produk Master"
+        description="Master produk lokal kosong saat awal. Tambahkan voucher, perdana, aksesoris, atau sinkronkan katalog Server Pulsa."
+      >
+        <template #action>
+          <div class="empty-actions">
+            <button
+              v-if="authStore.isAdmin"
+              type="button"
+              class="btn-primary"
+              :disabled="isSyncing"
+              @click="() => handleManualSync(false)"
+            >
+              Sinkronkan Katalog Sekarang
+            </button>
+            <router-link to="/masters/product/add" class="btn-primary">
+              + Tambah Produk Pertama
+            </router-link>
+          </div>
+        </template>
+      </EmptyState>
+
+      <!-- Empty State: Kategori Kosong -->
       <EmptyState
         v-else-if="filteredProducts.length === 0"
-        title="Belum Ada Produk Master"
-        description="Master produk lokal kosong saat awal. Tambahkan voucher, perdana, aksesoris, atau pulsa."
+        title="Belum Ada Produk di Kategori Ini"
+        description="Tidak ada produk lokal maupun katalog aktif pada kategori yang dipilih."
       >
         <template #action>
           <router-link to="/masters/product/add" class="btn-primary">
-            + Tambah Produk Pertama
+            + Tambah Produk Baru
           </router-link>
         </template>
       </EmptyState>
 
+      <!-- Daftar Produk (Lokal + Katalog Gabungan) -->
       <div v-else class="product-list">
         <div
           v-for="p in filteredProducts"
           :key="p.id"
           class="product-card"
-          :class="{ 'product-inactive': p.isActive === false }"
+          :class="{
+            'product-inactive': p.isActive === false,
+            'catalog-card': p.isCatalog,
+          }"
           role="button"
           tabindex="0"
-          :title="`Klik untuk edit ${p.name}`"
+          :title="p.isCatalog ? `Atur modal & harga jual untuk ${p.name}` : `Klik untuk edit ${p.name}`"
           :data-testid="`product-card-${p.id}`"
-          @click="handleCardClick(p.id)"
-          @keydown.enter="handleCardClick(p.id)"
+          @click="handleCardClick(p)"
+          @keydown.enter="handleCardClick(p)"
         >
           <div class="prod-left">
             <div class="prod-name-row">
               <span class="prod-name">{{ p.name }}</span>
-              <span v-if="p.isActive === false" class="badge-inactive" data-testid="badge-inactive">NONAKTIF</span>
+              <span v-if="p.isCatalog" class="badge-catalog" data-testid="badge-catalog">KATALOG</span>
+              <span v-else-if="p.isActive === false" class="badge-inactive" data-testid="badge-inactive">NONAKTIF</span>
             </div>
             <span class="prod-cat">{{ p.category.toUpperCase() }} {{ p.operator ? `• ${p.operator}` : '' }}</span>
-            <span v-if="p.stock !== null" class="prod-stock">
+            <span v-if="!p.isCatalog && p.stock !== null" class="prod-stock">
               Stok: <strong>{{ p.stock }}</strong> pcs (Min: {{ p.stockMin }})
+            </span>
+            <span v-else-if="p.isCatalog" class="prod-sku">
+              SKU: {{ p.id }}
             </span>
           </div>
 
           <div class="prod-right-wrapper">
-            <div class="prod-right">
+            <div v-if="p.isCatalog" class="prod-right catalog-pricing">
+              <span class="prod-jual money-display text-muted">Jual: —</span>
+              <span class="prod-modal money-display text-muted">Modal: —</span>
+              <span class="prod-hint-setup">Atur Harga →</span>
+            </div>
+            <div v-else class="prod-right">
               <span class="prod-jual money-display">Jual: {{ formatRupiah(p.hargaJual) }}</span>
               <span class="prod-modal money-display">Modal: {{ formatRupiah(p.modal) }}</span>
               <span class="prod-laba money-display">Laba: {{ formatRupiah(p.hargaJual - p.modal) }}</span>
             </div>
+
             <button
-              v-if="p.isActive === false"
+              v-if="!p.isCatalog && p.isActive === false"
               type="button"
               class="btn-activate-card"
               :data-testid="`btn-activate-${p.id}`"
@@ -134,26 +213,113 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ChevronRight, Search, X } from 'lucide-vue-next';
+import { ChevronRight, Search, X, RefreshCw } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import EmptyState from '../components/EmptyState.vue';
 import { db } from '../db/database';
-import { formatRupiah } from '../utils/format';
+import { formatRupiah, formatTanggalWita } from '../utils/format';
 import { productService } from '../services/productService';
+import { catalogService } from '../services/catalogService';
 import { useAuthStore } from '../stores/authStore';
 import { compareProducts } from '../utils/productSort';
-import type { Product } from '../db/types';
+import type { Product, ProductCategory, ProductCatalogEntry } from '../db/types';
+
+interface DisplayItem {
+  id: string;
+  name: string;
+  category: ProductCategory;
+  operator?: string;
+  modal: number;
+  hargaJual: number;
+  stock: number | null;
+  stockMin?: number;
+  isActive?: boolean;
+  isCatalog: boolean;
+  externalProductRef?: string;
+}
 
 const router = useRouter();
 const authStore = useAuthStore();
-const products = ref<Product[]>([]);
+
+const localProducts = ref<Product[]>([]);
+const catalogEntries = ref<ProductCatalogEntry[]>([]);
 const selectedCategory = ref<string>('all');
 const searchQuery = ref<string>('');
+
 const activateSuccessMessage = ref<string>('');
 const activateErrorMessage = ref<string>('');
 
+const isSyncing = ref<boolean>(false);
+const syncMessage = ref<string>('');
+const syncError = ref<string>('');
+const lastSyncText = ref<string>('');
+
+/**
+ * Urutan kategori chip (b24):
+ * pulsa -> token_pln -> game -> voucher -> perdana -> aksesoris
+ * Catatan: Kategori 'data' dihapus dari chip dan diganti 'game' (revisi 20 Nov 2026).
+ * Produk lokal 'data' tetap tampil di chip 'Semua' dan pencarian.
+ */
+const categories = [
+  { key: 'all', label: 'Semua' },
+  { key: 'pulsa', label: 'Pulsa' },
+  { key: 'token_pln', label: 'Token PLN' },
+  { key: 'game', label: 'Game' },
+  { key: 'voucher', label: 'Voucher' },
+  { key: 'perdana', label: 'Perdana' },
+  { key: 'aksesoris', label: 'Aksesoris' },
+];
+
+onMounted(async () => {
+  await loadData();
+  await checkAndAutoSync();
+});
+
 async function loadData() {
-  products.value = await db.products.toArray();
+  localProducts.value = await db.products.toArray();
+  catalogEntries.value = await db.productCatalogCache.filter((c) => c.isActive).toArray();
+  await updateLastSyncText();
+}
+
+async function updateLastSyncText() {
+  const ts = await catalogService.getLastSyncAt();
+  if (ts > 0) {
+    lastSyncText.value = `Terakhir sync: ${formatTanggalWita(ts, { hour: '2-digit', minute: '2-digit' })}`;
+  } else {
+    lastSyncText.value = '';
+  }
+}
+
+async function checkAndAutoSync() {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test') {
+    return;
+  }
+  const count = await db.productCatalogCache.count();
+  if (count === 0 && authStore.isAdmin) {
+    await handleManualSync(true);
+  }
+}
+
+async function handleManualSync(isAuto = false) {
+  if (isSyncing.value) return;
+  isSyncing.value = true;
+  syncError.value = '';
+  if (!isAuto) syncMessage.value = '';
+
+  try {
+    const res = await catalogService.syncCatalog({
+      actorUserId: authStore.currentUser?.id || 'system',
+    });
+    await loadData();
+    syncMessage.value = `Sinkronisasi selesai: ${res.added + res.updated} produk katalog (${res.added} baru, ${res.updated} diperbarui).`;
+  } catch (err: unknown) {
+    syncError.value =
+      err instanceof Error
+        ? err.message
+        : 'Gagal menyinkronkan katalog Server Pulsa.';
+  } finally {
+    isSyncing.value = false;
+  }
 }
 
 async function handleActivateProduct(id: string) {
@@ -171,38 +337,77 @@ async function handleActivateProduct(id: string) {
   }
 }
 
-function handleCardClick(productId: string) {
-  router.push(`/masters/product/${productId}/edit`);
+function handleCardClick(item: DisplayItem) {
+  if (item.isCatalog) {
+    router.push({
+      path: '/masters/product/add',
+      query: { catalog: item.id },
+    });
+  } else {
+    router.push(`/masters/product/${item.id}/edit`);
+  }
 }
 
-const categories = [
-  { key: 'all', label: 'Semua' },
-  { key: 'voucher', label: 'Voucher' },
-  { key: 'perdana', label: 'Perdana' },
-  { key: 'aksesoris', label: 'Aksesoris' },
-  { key: 'pulsa', label: 'Pulsa' },
-  { key: 'data', label: 'Paket Data' },
-  { key: 'token_pln', label: 'Token PLN' },
-];
-
-onMounted(async () => {
-  await loadData();
-});
-
-const filteredProducts = computed(() => {
+/**
+ * Menggabungkan produk lokal dan entri katalog aktif:
+ * - Dedupe: jika SKU katalog sudah menjadi produk lokal, kartu katalog dilewati.
+ * - Filter kategori & query pencarian.
+ * - Urutkan dengan compareProducts (kategori dulu, lalu aturan b23 di dalam kategori).
+ */
+const filteredProducts = computed<DisplayItem[]>(() => {
   const q = searchQuery.value.trim().toLowerCase();
-  const matched = products.value.filter((p) => {
-    const matchesCategory = selectedCategory.value === 'all' || p.category === selectedCategory.value;
+
+  const localCatalogRefs = new Set(
+    localProducts.value
+      .map((p) => p.externalProductRef)
+      .filter((ref): ref is string => Boolean(ref))
+  );
+
+  const items: DisplayItem[] = [];
+
+  for (const p of localProducts.value) {
+    items.push({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      operator: p.operator,
+      modal: p.modal,
+      hargaJual: p.hargaJual,
+      stock: p.stock ?? null,
+      stockMin: p.stockMin,
+      isActive: p.isActive !== false,
+      isCatalog: false,
+      externalProductRef: p.externalProductRef,
+    });
+  }
+
+  for (const c of catalogEntries.value) {
+    if (!localCatalogRefs.has(c.id)) {
+      items.push({
+        id: c.id,
+        name: c.name,
+        category: c.category,
+        operator: c.operator,
+        modal: 0,
+        hargaJual: 0,
+        stock: null,
+        isActive: true,
+        isCatalog: true,
+      });
+    }
+  }
+
+  const matched = items.filter((item) => {
+    const matchesCategory =
+      selectedCategory.value === 'all' || item.category === selectedCategory.value;
     const matchesQuery =
       q === '' ||
-      p.name.toLowerCase().includes(q) ||
-      (p.operator ?? '').toLowerCase().includes(q);
-    // (b22) Tanpa query: hanya produk aktif. Dengan query: produk nonaktif
-    // yang cocok ikut tampil supaya tetap bisa diaktifkan kembali.
-    const matchesActive = q !== '' ? true : p.isActive !== false;
+      item.name.toLowerCase().includes(q) ||
+      (item.operator ?? '').toLowerCase().includes(q);
+    const matchesActive = q !== '' ? true : item.isActive !== false;
     return matchesCategory && matchesQuery && matchesActive;
   });
-  // (b23) Urutkan: provider alfabetis (case-insensitive) -> masa aktif (hari setelah "/") numerik menaik -> kuota -> nama
+
   return [...matched].sort(compareProducts);
 });
 </script>
@@ -218,12 +423,70 @@ const filteredProducts = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
+}
+
+.header-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .page-title {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-main);
+  margin: 0;
+}
+
+.sync-timestamp {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface-card);
+  color: var(--color-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-chip);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.btn-sync:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sync-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.spin-anim {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .btn-add {
@@ -234,6 +497,7 @@ const filteredProducts = computed(() => {
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .search-box {
@@ -312,6 +576,33 @@ const filteredProducts = computed(() => {
   color: var(--color-danger);
 }
 
+.sync-error-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.btn-retry-sync {
+  padding: 4px 8px;
+  background: var(--color-danger);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.catalog-helper-banner {
+  padding: 8px 12px;
+  background: var(--surface-card-subtle);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .category-tabs {
   display: flex;
   gap: 8px;
@@ -366,6 +657,11 @@ const filteredProducts = computed(() => {
   transform: translateY(0);
 }
 
+.catalog-card {
+  border-style: dashed;
+  background: var(--surface-card);
+}
+
 .prod-left {
   display: flex;
   flex-direction: column;
@@ -387,7 +683,8 @@ const filteredProducts = computed(() => {
   color: var(--color-primary);
 }
 
-.prod-stock {
+.prod-stock,
+.prod-sku {
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -404,6 +701,16 @@ const filteredProducts = computed(() => {
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
+}
+
+.catalog-pricing {
+  align-items: flex-end;
+}
+
+.prod-hint-setup {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary);
 }
 
 .prod-arrow {
@@ -451,6 +758,17 @@ const filteredProducts = computed(() => {
   letter-spacing: 0.5px;
 }
 
+.badge-catalog {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--color-primary-subtle, #e0f2fe);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  letter-spacing: 0.5px;
+}
+
 .product-inactive {
   opacity: 0.75;
   background: var(--bg-secondary, #f8fafc);
@@ -474,6 +792,13 @@ const filteredProducts = computed(() => {
   opacity: 0.9;
 }
 
+.empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
 .btn-primary {
   display: inline-block;
   padding: 10px 18px;
@@ -482,6 +807,8 @@ const filteredProducts = computed(() => {
   background: var(--color-primary);
   color: var(--color-white);
   border-radius: var(--radius-btn);
+  border: none;
   text-decoration: none;
+  cursor: pointer;
 }
 </style>

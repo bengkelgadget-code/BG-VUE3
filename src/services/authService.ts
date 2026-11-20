@@ -397,9 +397,15 @@ export class AuthServiceImpl {
 
   /**
    * Mengambil seluruh data user (untuk halaman Kelola Petugas).
+   * (b24) Urutkan: Owner paling atas, lalu alfabetis berdasarkan nama.
    */
   public async getAllUsers(): Promise<User[]> {
-    return await db.users.toArray();
+    const list = await db.users.toArray();
+    return list.sort((a, b) => {
+      if (a.role === 'owner' && b.role !== 'owner') return -1;
+      if (a.role !== 'owner' && b.role === 'owner') return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
   }
 }
 

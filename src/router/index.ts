@@ -33,6 +33,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, roles: ['admin', 'kepala_kasir', 'kasir'] },
   },
   {
+    path: '/transactions/owner',
+    name: 'OwnerTransaction',
+    component: () => import('../views/OwnerTransactionView.vue'),
+    meta: { requiresAuth: true, roles: ['owner'] },
+  },
+  {
     path: '/transactions/:id',
     name: 'TransactionDetail',
     component: () => import('../views/TransactionDetailView.vue'),

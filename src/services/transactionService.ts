@@ -6,6 +6,7 @@ import { productService } from './productService';
 import { balanceService } from './balanceService';
 import { stockService } from './stockService';
 import { authService } from './authService';
+import { accountService } from './accountService';
 import { getWitaDateString } from '../utils/datePeriod';
 
 export interface CartItemInput {
@@ -63,7 +64,7 @@ export class TransactionService {
    */
   public async addTransaction(
     input: TransactionInput,
-    opts: { actorUserId: string; shiftId: string }
+    opts: { actorUserId: string; shiftId?: string | null }
   ): Promise<string> {
     if (!input.nominal || input.nominal <= 0 || !Number.isInteger(input.nominal)) {
       throw new AppError('Nominal transaksi harus bilangan bulat lebih besar dari Rp0.');
@@ -71,6 +72,18 @@ export class TransactionService {
 
     if (input.fee < 0 || !Number.isInteger(input.fee)) {
       throw new AppError('Biaya admin harus bilangan bulat >= Rp0.');
+    }
+
+    const isOwnerService = [
+      'pindah_dana',
+      'deposit_server',
+      'deposit_provider',
+      'pembelian_stok',
+      'operasional',
+    ].includes(input.layanan);
+
+    if (!opts.shiftId && !isOwnerService) {
+      throw new AppError('Transaksi kasir membutuhkan shift aktif.');
     }
 
     const paymentStatus = input.paymentStatus || 'lunas';
@@ -92,10 +105,17 @@ export class TransactionService {
     } else {
       // Cash, tarik_tunai, atau layanan tanpa Bayar Admin (voucher, perdana, aksesoris, pulsa, data, token_pln, operasional, pindah_dana, deposit)
       const kasAccount = await db.accounts.where('type').equals('kas').first();
-      if (!kasAccount) {
-        throw new AppError('Belum ada akun Kas. Tambahkan akun Kas terlebih dahulu.');
+      if (kasAccount) {
+        paymentAccountId = kasAccount.id;
+      } else if (input.sourceAccountId) {
+        paymentAccountId = input.sourceAccountId;
+      } else {
+        const firstActive = await db.accounts.filter((a) => a.isActive).first();
+        if (!firstActive) {
+          throw new AppError('Belum ada akun aktif. Tambahkan akun terlebih dahulu.');
+        }
+        paymentAccountId = firstActive.id;
       }
-      paymentAccountId = kasAccount.id;
     }
 
     const transactionId = uuidv4();
@@ -130,33 +150,15 @@ export class TransactionService {
     let productNameSnapshot = input.layanan;
 
     const itemsToSave: TransactionItem[] = [];
+    const rawItems = (input as { cartItems?: { productId: string; qty: number }[]; items?: { productId: string; qty: number }[] }).cartItems ||
+      (input as { cartItems?: { productId: string; qty: number }[]; items?: { productId: string; qty: number }[] }).items;
 
-    if (input.productId) {
-      const product = await db.products.get(input.productId);
-      if (!product) {
-        throw new AppError('Produk master tidak ditemukan.');
-      }
-      const pricing = await productService.getModalAndPrice(input.productId);
-      modal = pricing.modal;
-      hargaJual = pricing.hargaJual;
-      productNameSnapshot = product.name;
-
-      itemsToSave.push({
-        id: uuidv4(),
-        transactionId,
-        productId: input.productId,
-        productNameSnapshot,
-        qty: 1,
-        modalSnapshot: modal,
-        hargaJualSnapshot: hargaJual,
-        subtotal: hargaJual,
-      });
-    } else if (input.cartItems && input.cartItems.length > 0) {
-      // Keranjang multi-item
+    if (rawItems && rawItems.length > 0) {
+      // Keranjang multi-item / pembelian_stok
       let totalModal = 0;
       let totalJual = 0;
 
-      for (const item of input.cartItems) {
+      for (const item of rawItems) {
         const product = await db.products.get(item.productId);
         if (!product) continue;
         const pricing = await productService.getModalAndPrice(item.productId);
@@ -178,12 +180,33 @@ export class TransactionService {
 
       modal = totalModal;
       hargaJual = totalJual;
+    } else if (input.productId) {
+      const product = await db.products.get(input.productId);
+      if (!product) {
+        throw new AppError('Produk master tidak ditemukan.');
+      }
+      const pricing = await productService.getModalAndPrice(input.productId);
+      modal = pricing.modal;
+      hargaJual = pricing.hargaJual;
+      productNameSnapshot = product.name;
+
+      itemsToSave.push({
+        id: uuidv4(),
+        transactionId,
+        productId: input.productId,
+        productNameSnapshot,
+        qty: 1,
+        modalSnapshot: modal,
+        hargaJualSnapshot: hargaJual,
+        subtotal: hargaJual,
+      });
     }
 
     // Hitung delta saldo
+    const effectiveSourceAccountId = input.sourceAccountId || (isOwnerService ? (input as unknown as { paymentAccountId?: string }).paymentAccountId : undefined);
     const deltas = balanceService.computeDeltas({
       layanan: input.layanan,
-      sourceAccountId: input.sourceAccountId,
+      sourceAccountId: effectiveSourceAccountId,
       destAccountId: input.destAccountId,
       paymentAccountId,
       nominal: input.nominal,
@@ -193,13 +216,24 @@ export class TransactionService {
       feePaidBy: input.feePaidBy,
     });
 
+    // Validasi saldo akun sumber: saldo tidak boleh minus akibat transaksi ini
+    if (effectiveSourceAccountId) {
+      const sourceBalance = await accountService.getBalance(effectiveSourceAccountId);
+      const outgoingDelta = deltas
+        .filter((d) => d.accountId === effectiveSourceAccountId && d.delta < 0)
+        .reduce((sum, d) => sum + Math.abs(d.delta), 0);
+      if (outgoingDelta > 0 && sourceBalance < outgoingDelta) {
+        throw new AppError('Saldo akun sumber tidak mencukupi.');
+      }
+    }
+
     const txRecord: Transaction = {
       id: transactionId,
       layanan: input.layanan,
-      shiftId: opts.shiftId,
+      shiftId: opts.shiftId || null,
       userId: opts.actorUserId,
       accountId: paymentAccountId,
-      sourceAccountId: input.sourceAccountId,
+      sourceAccountId: effectiveSourceAccountId,
       destAccountId: input.destAccountId,
       nominal: input.nominal,
       fee: input.fee,
@@ -263,14 +297,15 @@ export class TransactionService {
           await balanceService.applyDeltas({ transactionId, deltas, multiplier: 1 });
         }
 
-        // 4. Kurangi stok barang jika ada produk fisik
+        // 4. Perbarui stok barang jika ada produk fisik
         for (const item of itemsToSave) {
+          const isPurchase = input.layanan === 'pembelian_stok';
           await stockService.adjustStock({
             productId: item.productId,
-            qtyChange: -item.qty,
-            reason: 'jual',
+            qtyChange: isPurchase ? item.qty : -item.qty,
+            reason: isPurchase ? 'pembelian_stok' : 'jual',
             transactionId,
-            shiftId: opts.shiftId,
+            shiftId: opts.shiftId || undefined,
             actorUserId: opts.actorUserId,
           });
         }
@@ -402,9 +437,10 @@ export class TransactionService {
 
         // 3. Kembalikan stok fisik jika ada
         for (const item of items) {
+          const isPurchase = tx.layanan === 'pembelian_stok';
           await stockService.adjustStock({
             productId: item.productId,
-            qtyChange: item.qty, // +qty untuk mengembalikan
+            qtyChange: isPurchase ? -item.qty : item.qty, // pembelian_stok dibatalkan -> kurangi stok (-qty); penjualan dibatalkan -> kembalikan stok (+qty)
             reason: 'void',
             transactionId,
             actorUserId: opts.actorUserId,

@@ -1,10 +1,29 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/database';
-import type { ProductCatalogEntry } from '../db/types';
+import type { ProductCatalogEntry, ProductCategory } from '../db/types';
 import { AppError } from '../core/errors';
 import { authService } from './authService';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabase';
+
+/**
+ * Pemetaan kategori Supabase Server Pulsa ke kategori Buku Konter (b24 revisi 20 Nov 2026):
+ * HANYA: Pulsa -> pulsa, PLN -> token_pln, Games -> game.
+ * Lainnya (Data, E-Money, Masa Aktif, Pascabayar, dsb.) menghasilkan null (dilewati).
+ */
+export const SUPABASE_CATEGORY_MAP: Record<string, ProductCategory> = {
+  pulsa: 'pulsa',
+  pln: 'token_pln',
+  token_pln: 'token_pln',
+  games: 'game',
+  game: 'game',
+};
+
+export function mapSupabaseCategory(raw?: string | null): ProductCategory | null {
+  if (!raw) return null;
+  const key = raw.trim().toLowerCase();
+  return SUPABASE_CATEGORY_MAP[key] ?? null;
+}
 
 export class CatalogService {
   private client: SupabaseClient | null = null;
@@ -71,6 +90,12 @@ export class CatalogService {
     const remoteIds = new Set<string>();
 
     for (const item of data) {
+      const mappedCategory = mapSupabaseCategory(item.category);
+      if (!mappedCategory) {
+        // Lewati kategori yang tidak dicakup sementara (revisi 20 Nov 2026: hanya pulsa, token_pln, game)
+        continue;
+      }
+
       const itemId = String(item.sku_code);
       remoteIds.add(itemId);
       const existing = await db.productCatalogCache.get(itemId);
@@ -82,7 +107,7 @@ export class CatalogService {
       const entry: ProductCatalogEntry = {
         id: itemId,
         name: String(item.product_name || ''),
-        category: (item.category as 'pulsa' | 'data' | 'token_pln' | 'lainnya') || 'lainnya',
+        category: mappedCategory,
         operator: item.brand ? String(item.brand) : undefined,
         denomination: '',
         isActive: true,

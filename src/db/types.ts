@@ -22,11 +22,21 @@ export interface AccountLedger {
   createdAt: number; // epoch ms
 }
 
+export type ProductCategory =
+  | 'pulsa'
+  | 'data'
+  | 'token_pln'
+  | 'voucher'
+  | 'perdana'
+  | 'aksesoris'
+  | 'game'
+  | 'lainnya';
+
 export interface Product {
   id: string;
   externalProductRef?: string; // id/SKU katalog Supabase, read-only ref
   name: string;
-  category: 'pulsa' | 'data' | 'token_pln' | 'voucher' | 'perdana' | 'aksesoris' | 'lainnya';
+  category: ProductCategory;
   operator?: string; // Telkomsel, Indosat, PLN, dll.
   denomination?: string; // '5.000', '10.000', '20.000', dst
   modal: number; // int Rupiah — dari Master Produk lokal (Owner/Admin)
@@ -45,7 +55,7 @@ export type NewProduct = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
 export interface ProductCatalogEntry {
   id: string; // id/SKU katalog Supabase (PK)
   name: string;
-  category: 'pulsa' | 'data' | 'token_pln' | 'lainnya';
+  category: ProductCategory;
   operator?: string;
   denomination?: string;
   isActive: boolean;
@@ -71,7 +81,7 @@ export type NewAdminFeeRule = Omit<AdminFeeRule, 'id' | 'createdAt' | 'updatedAt
 export interface Transaction {
   id: string;
   layanan: string;
-  shiftId: string;
+  shiftId: string | null;
   userId: string;
   accountId?: string;
   sourceAccountId?: string;

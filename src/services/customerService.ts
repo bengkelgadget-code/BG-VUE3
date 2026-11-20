@@ -83,7 +83,8 @@ export class CustomerService {
         (c) => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q))
       );
     }
-    return list;
+    // (b24) Urutkan alfabetis nama pelanggan
+    return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }
 
   public async getCustomer(id: string): Promise<Customer | undefined> {

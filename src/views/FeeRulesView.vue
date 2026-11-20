@@ -63,6 +63,7 @@ import EmptyState from '../components/EmptyState.vue';
 import { db } from '../db/database';
 import { feeRuleService } from '../services/feeRuleService';
 import { formatRupiah } from '../utils/format';
+import { compareFeeRules } from '../utils/productSort';
 import type { AdminFeeRule } from '../db/types';
 
 interface GroupedRule {
@@ -105,7 +106,7 @@ const groupedRules = computed(() => {
     map[r.groupId]!.services.push(r.layanan);
   }
 
-  return Object.values(map);
+  return Object.values(map).sort(compareFeeRules);
 });
 
 async function handleDeactivateGroup(groupId: string) {

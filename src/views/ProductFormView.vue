@@ -25,6 +25,7 @@
               <option value="perdana">Kartu Perdana (Stok Fisik)</option>
               <option value="aksesoris">Aksesoris / Charger / Kabel (Stok Fisik)</option>
               <option value="pulsa">Pulsa Reguler (Digital)</option>
+              <option value="game">Game (Digital)</option>
               <option value="data">Paket Data (Digital)</option>
               <option value="token_pln">Token Listrik PLN (Digital)</option>
               <option value="lainnya">Lainnya</option>
@@ -357,7 +358,8 @@ import { brandService } from '../services/brandService';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah, parseRupiah } from '../utils/format';
 import { AppError } from '../core/errors';
-import type { Brand } from '../db/types';
+import { db } from '../db/database';
+import type { Brand, ProductCategory } from '../db/types';
 
 const route = useRoute();
 const router = useRouter();
@@ -365,6 +367,7 @@ const authStore = useAuthStore();
 
 const productId = computed(() => (route.params['id'] as string) || '');
 const isEditMode = computed(() => Boolean(productId.value));
+const catalogSku = computed(() => (route.query['catalog'] as string) || '');
 
 const showDeleteConfirm = ref(false);
 const isDeleting = ref(false);
@@ -379,7 +382,7 @@ const isActivating = ref(false);
 
 // Fields form
 const name = ref('');
-const category = ref<'voucher' | 'perdana' | 'aksesoris' | 'pulsa' | 'data' | 'token_pln' | 'lainnya'>('voucher');
+const category = ref<ProductCategory>('voucher');
 const operator = ref('');
 const operatorInput = ref('');
 const modal = ref<number>(0);
@@ -525,6 +528,24 @@ async function loadProductData() {
   }
 }
 
+async function loadCatalogPrefill() {
+  if (isEditMode.value || !catalogSku.value) return;
+  try {
+    const entry = await db.productCatalogCache.get(catalogSku.value);
+    if (!entry) return;
+    name.value = entry.name;
+    category.value = entry.category;
+    operator.value = entry.operator || '';
+    operatorInput.value = entry.operator || '';
+    modal.value = 0;
+    hargaJual.value = 0;
+    stock.value = 0;
+    stockMin.value = 2;
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : 'Gagal memuat katalog produk.';
+  }
+}
+
 async function handleSubmit() {
   errorMessage.value = '';
   isSubmitting.value = true;
@@ -540,6 +561,16 @@ async function handleSubmit() {
           hargaJual: hargaJual.value,
           stock: isPhysical.value ? stock.value : null,
           stockMin: stockMin.value,
+        },
+        { actorUserId: authStore.currentUser?.id || 'system' }
+      );
+    } else if (catalogSku.value) {
+      await productService.createProductFromCatalog(
+        catalogSku.value,
+        {
+          modal: modal.value,
+          hargaJual: hargaJual.value,
+          stockMin: isPhysical.value ? stockMin.value : undefined,
         },
         { actorUserId: authStore.currentUser?.id || 'system' }
       );
@@ -639,6 +670,7 @@ async function handleActivateProduct() {
 onMounted(async () => {
   await loadBrands();
   await loadProductData();
+  await loadCatalogPrefill();
   if (typeof document !== 'undefined') {
     document.addEventListener('click', handleClickOutside);
   }

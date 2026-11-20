@@ -779,6 +779,8 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
     let prodPulsaTsel: Product;
 
     beforeEach(async () => {
+      await db.products.clear();
+      await db.productCatalogCache.clear();
       const id1 = await productService.addProduct(
         {
           name: 'Perdana Telkomsel 10GB',
@@ -998,6 +1000,7 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
   describe('(b23) Sorting Master Produk di MastersView', () => {
     beforeEach(async () => {
       await db.products.clear();
+      await db.productCatalogCache.clear();
 
       const sample = [
         { name: 'Tsel 10/28', category: 'voucher' as const, operator: 'Telkomsel' },

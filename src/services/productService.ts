@@ -77,6 +77,11 @@ export class ProductService {
       throw new AppError('Entri katalog tidak ditemukan di cache.');
     }
 
+    const duplicate = await db.products.where('externalProductRef').equals(catalogId).first();
+    if (duplicate) {
+      throw new AppError('Produk ini sudah ada di Master Produk.');
+    }
+
     return await this.addProduct(
       {
         name: catalogEntry.name,

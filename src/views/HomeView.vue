@@ -84,6 +84,27 @@
         </div>
       </div>
 
+      <!-- Aksi Transaksi Khusus Owner (b24) -->
+      <div v-if="authStore.isOwner" class="owner-actions-section">
+        <h3 class="section-title">Transaksi Owner</h3>
+        <router-link
+          to="/transactions/owner"
+          class="owner-action-card"
+          data-testid="btn-owner-transaction-home"
+        >
+          <div class="owner-card-content">
+            <div class="action-icon-box owner-icon">
+              <ArrowRightLeft class="icon" />
+            </div>
+            <div class="owner-text-col">
+              <strong class="owner-card-title">Catat Transaksi Owner</strong>
+              <span class="owner-card-desc">Pindah dana antar rekening, top-up provider/server, beli stok & belanja operasional</span>
+            </div>
+          </div>
+          <span class="owner-arrow">Buka →</span>
+        </router-link>
+      </div>
+
       <!-- Strip Akun Saldo Catatan -->
       <div class="accounts-section">
         <div class="section-header">
@@ -105,7 +126,7 @@
         <div v-else class="accounts-carousel">
           <div v-for="acc in accountList" :key="acc.id" class="account-card">
             <span class="acc-name">{{ acc.name }}</span>
-            <span class="acc-balance money-display">{{ formatRupiah(accountBalances[acc.id] || acc.initialBalance) }}</span>
+            <span class="acc-balance money-display">{{ formatRupiah(accountBalances[acc.id] ?? 0) }}</span>
             <span class="acc-badge">{{ acc.type }} (catatan)</span>
           </div>
         </div>
@@ -132,6 +153,31 @@
             </router-link>
           </template>
         </EmptyState>
+        <div v-else class="recent-tx-list">
+          <div
+            v-for="t in recentTransactions"
+            :key="t.id"
+            class="recent-tx-card"
+            :data-testid="`recent-tx-${t.id}`"
+            @click="router.push(`/transactions/${t.id}`)"
+          >
+            <div class="tx-left">
+              <div class="tx-icon-box" :class="t.layanan">
+                <span class="service-initial">{{ t.layanan.substring(0, 2).toUpperCase() }}</span>
+              </div>
+              <div class="tx-info">
+                <span class="tx-service">{{ t.layanan.replace('_', ' ').toUpperCase() }}</span>
+                <span class="tx-date">{{ formatTanggalWita(t.date, { hour: '2-digit', minute: '2-digit' }) }}</span>
+              </div>
+            </div>
+            <div class="tx-right">
+              <span class="tx-amount money-display">{{ formatRupiah(t.nominal) }}</span>
+              <span v-if="t.status === 'void'" class="badge badge-void">BATAL</span>
+              <span v-else-if="t.paymentStatus === 'hutang'" class="badge badge-debt">HUTANG</span>
+              <span v-else class="badge badge-paid">LUNAS</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -179,15 +225,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, watch, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { ArrowRightLeft, Banknote, Smartphone, Wallet } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import EmptyState from '../components/EmptyState.vue';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
 import { db } from '../db/database';
+import { accountService } from '../services/accountService';
+import { reportService } from '../services/reportService';
+import { compareAccounts } from '../utils/productSort';
 import type { Account, Shift, Transaction } from '../db/types';
 
+const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const activeShift = ref<Shift | null>(null);
@@ -208,16 +260,10 @@ function dismissOnboarding() {
   }
 }
 
-onMounted(async () => {
-  if (typeof localStorage !== 'undefined') {
-    const shown = localStorage.getItem('buku_konter_onboarding_shown');
-    if (!shown) {
-      showOnboarding.value = true;
-    }
-  }
-  // Muat akun
-  accountList.value = await db.accounts.filter((a) => a.isActive).toArray();
-  // Muat shift aktif
+async function loadHomeData() {
+  currentWitaTime.value = formatTanggalWita(Date.now(), { hour: '2-digit', minute: '2-digit' });
+
+  // 1. Muat shift aktif
   if (authStore.currentUser) {
     let shift = await db.shifts
       .where({ userId: authStore.currentUser.id, status: 'open' })
@@ -226,8 +272,63 @@ onMounted(async () => {
       shift = await db.shifts.where('status').equals('open').first();
     }
     activeShift.value = shift || null;
+  } else {
+    activeShift.value = null;
   }
+
+  // 2. Muat akun saldo dan balances sebenarnya dari accountService.getAllBalances()
+  const rawAccounts = await db.accounts.filter((a) => a.isActive).toArray();
+  // (b24) Urutkan: Kas -> Bank -> E-Wallet -> Server Pulsa -> Provider App
+  accountList.value = rawAccounts.sort(compareAccounts);
+
+  const balances = await accountService.getAllBalances();
+  accountBalances.value = balances;
+
+  // Total saldo kas (catatan) = jumlah saldo SEMUA akun aktif
+  totalKas.value = accountList.value.reduce((sum, a) => sum + (balances[a.id] ?? 0), 0);
+
+  // 3. Masuk / Keluar / Laba shift aktif (bila shift belum dibuka, tetap Rp 0)
+  if (activeShift.value) {
+    const from = activeShift.value.openedAt;
+    const to = activeShift.value.closedAt ?? Date.now();
+    const sId = activeShift.value.id;
+    totalMasuk.value = await reportService.totalIn(from, to, { shiftId: sId });
+    totalKeluar.value = await reportService.totalOut(from, to, { shiftId: sId });
+    totalLaba.value = await reportService.totalLaba(from, to, { shiftId: sId });
+  } else {
+    totalMasuk.value = 0;
+    totalKeluar.value = 0;
+    totalLaba.value = 0;
+  }
+
+  // 4. Transaksi Terakhir (maks 5, terbaru dulu)
+  // Untuk Owner tampilkan lintas semua shift/petugas; untuk Kasir tampilkan shift aktif
+  let txList = await db.transactions.orderBy('date').reverse().toArray();
+  if (!authStore.isOwner && activeShift.value) {
+    txList = txList.filter((t) => t.shiftId === activeShift.value!.id);
+  }
+  recentTransactions.value = txList.slice(0, 5);
+}
+
+onMounted(async () => {
+  if (typeof localStorage !== 'undefined') {
+    const shown = localStorage.getItem('buku_konter_onboarding_shown');
+    if (!shown) {
+      showOnboarding.value = true;
+    }
+  }
+  await loadHomeData();
 });
+
+// Refresh data setiap kali kembali ke halaman Home
+watch(
+  () => route.path,
+  async (newPath) => {
+    if (newPath === '/' || newPath === '/home') {
+      await loadHomeData();
+    }
+  }
+);
 </script>
 
 <style scoped>
@@ -455,6 +556,160 @@ onMounted(async () => {
   border-radius: var(--radius-btn);
   text-decoration: none;
 }
+
+/* Transaksi Owner Section & Card (b24) */
+.owner-actions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.owner-action-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  text-decoration: none;
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: border-color var(--transition-fast);
+}
+
+.owner-action-card:hover {
+  border-color: var(--color-primary);
+}
+
+.owner-card-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-icon-box.owner-icon {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0284c7;
+  border-color: rgba(14, 165, 233, 0.2);
+}
+
+.owner-text-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.owner-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.owner-card-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.owner-arrow {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+/* Transaksi Terakhir List & Card (b24) */
+.recent-tx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recent-tx-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.recent-tx-card:hover {
+  border-color: var(--color-primary);
+}
+
+.tx-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tx-icon-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--surface-input);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+
+.tx-icon-box.transfer { background: rgba(59, 130, 246, 0.1); color: #2563eb; }
+.tx-icon-box.tarik_tunai { background: rgba(16, 185, 129, 0.1); color: #059669; }
+.tx-icon-box.pulsa { background: rgba(245, 158, 11, 0.1); color: #d97706; }
+.tx-icon-box.topup_ewallet { background: rgba(139, 92, 246, 0.1); color: #7c3aed; }
+.tx-icon-box.pindah_dana { background: rgba(14, 165, 233, 0.1); color: #0284c7; }
+.tx-icon-box.deposit_server, .tx-icon-box.deposit_provider { background: rgba(99, 102, 241, 0.1); color: #4f46e5; }
+.tx-icon-box.pembelian_stok { background: rgba(236, 72, 153, 0.1); color: #db2777; }
+.tx-icon-box.operasional { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
+
+.tx-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tx-service {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.tx-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tx-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.tx-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.badge-paid { background: #ecfdf5; color: #059669; }
+.badge-debt { background: #fef2f2; color: #dc2626; }
+.badge-void { background: #f3f4f6; color: #6b7280; text-decoration: line-through; }
 
 .onboarding-overlay {
   position: fixed;
