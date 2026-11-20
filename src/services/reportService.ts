@@ -25,7 +25,7 @@ export class ReportService {
     let total = 0;
 
     for (const t of txs) {
-      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'operasional'].includes(t.layanan)) {
+      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'operasional', 'jasa_transfer'].includes(t.layanan)) {
         continue;
       }
       if (t.layanan === 'pemasukan_lain') {
@@ -59,7 +59,7 @@ export class ReportService {
         total += t.nominal;
         continue;
       }
-      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pemasukan_lain'].includes(t.layanan)) {
+      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pemasukan_lain', 'jasa_transfer'].includes(t.layanan)) {
         continue;
       }
       // Ambil modal item jika ada
@@ -83,7 +83,7 @@ export class ReportService {
         laba -= t.nominal;
         continue;
       }
-      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(t.layanan)) {
+      if (['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(t.layanan)) {
         continue;
       }
       if (t.layanan === 'pemasukan_lain') {
@@ -129,7 +129,7 @@ export class ReportService {
       } else if (t.layanan === 'operasional') {
         entry.omzet += t.nominal;
         entry.laba -= t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(t.layanan)) {
+      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(t.layanan)) {
         entry.omzet += t.nominal;
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
@@ -197,7 +197,7 @@ export class ReportService {
       } else if (t.layanan === 'pemasukan_lain') {
         p.totalIn += t.nominal;
         p.laba += t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(t.layanan)) {
+      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(t.layanan)) {
         p.totalIn += t.nominal;
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
@@ -231,7 +231,7 @@ export class ReportService {
         entry.laba += t.nominal;
       } else if (t.layanan === 'operasional') {
         entry.laba -= t.nominal;
-      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(t.layanan)) {
+      } else if (!['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(t.layanan)) {
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
         for (const item of items) {

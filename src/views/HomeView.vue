@@ -669,6 +669,7 @@ watch(
 
 .tx-icon-box.transfer { background: rgba(59, 130, 246, 0.1); color: #2563eb; }
 .tx-icon-box.tarik_tunai { background: rgba(16, 185, 129, 0.1); color: #059669; }
+.tx-icon-box.jasa_transfer { background: rgba(14, 165, 233, 0.1); color: #0284c7; }
 .tx-icon-box.pulsa { background: rgba(245, 158, 11, 0.1); color: #d97706; }
 .tx-icon-box.topup_ewallet { background: rgba(139, 92, 246, 0.1); color: #7c3aed; }
 .tx-icon-box.pindah_dana { background: rgba(14, 165, 233, 0.1); color: #0284c7; }

@@ -45,7 +45,7 @@
       </div>
 
       <!-- Pilihan Bayar Admin: Cash / Debit Rekening di sebelah Nominal -->
-      <div v-if="!hideAdmin" class="field-col method-col">
+      <div v-if="!hideAdmin && !hideFeePaidBy" class="field-col method-col">
         <label class="field-label">Bayar Admin</label>
         <div class="toggle-group">
           <button
@@ -87,6 +87,7 @@ const props = withDefaults(
     isAutoFee?: boolean;
     feeManualOverride?: boolean;
     hideAdmin?: boolean;
+    hideFeePaidBy?: boolean;
     disabled?: boolean;
   }>(),
   {
@@ -98,6 +99,7 @@ const props = withDefaults(
     isAutoFee: false,
     feeManualOverride: false,
     hideAdmin: false,
+    hideFeePaidBy: false,
     disabled: false,
   }
 );

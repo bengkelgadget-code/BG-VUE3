@@ -43,6 +43,7 @@
               <option value="group_transfer">Semua Transfer & Top-up</option>
               <option value="transfer">Transfer</option>
               <option value="tarik_tunai">Tarik Tunai</option>
+              <option value="jasa_transfer">Jasa Transfer</option>
               <option value="topup_ewallet">Top-up E-Wallet</option>
               <option value="ppob">PPOB</option>
               <option value="pindah_dana">Pindah Dana</option>
@@ -133,7 +134,7 @@ const categoryChips = [
 ];
 
 const PENJUALAN_SERVICES = ['pulsa', 'data', 'token_pln', 'voucher', 'perdana', 'aksesoris', 'game'];
-const TRANSFER_SERVICES = ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob', 'pindah_dana', 'deposit_server', 'deposit_provider'];
+const TRANSFER_SERVICES = ['transfer', 'tarik_tunai', 'jasa_transfer', 'topup_ewallet', 'ppob', 'pindah_dana', 'deposit_server', 'deposit_provider'];
 const LAINNYA_SERVICES = ['operasional', 'pembelian_stok', 'pemasukan_lain'];
 
 onMounted(async () => {

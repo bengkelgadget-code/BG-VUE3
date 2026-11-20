@@ -100,6 +100,21 @@
 
         <!-- 2. Detail Cascading Sesuai Jenis Layanan -->
         <div class="form-section card-section">
+          <!-- Layanan Jasa Transfer -->
+          <div v-if="layanan === 'jasa_transfer'" class="cascading-fields">
+            <div class="form-group">
+              <label class="form-label">Nama Bank & No. Rekening Tujuan</label>
+              <input
+                ref="referenceNoRef"
+                v-model="referenceNo"
+                type="text"
+                class="form-input"
+                placeholder="Contoh: BCA 123456789 a.n. Budi"
+                @keydown.enter.prevent="focusElement(moneyInputRef)"
+              />
+            </div>
+          </div>
+
           <!-- Layanan Transfer / Tarik Tunai / Top Up / PPOB -->
           <div v-if="['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(layanan)" class="cascading-fields">
             <div class="form-group">
@@ -272,6 +287,7 @@
             v-model:fee="fee"
             v-model:feePaidBy="feePaidBy"
             :hide-admin="['voucher', 'perdana', 'aksesoris', 'pulsa', 'data', 'token_pln', 'operasional'].includes(layanan)"
+            :hide-fee-paid-by="layanan === 'jasa_transfer'"
             :is-auto-fee="Boolean(matchedRule && !feeManualOverride)"
             :fee-manual-override="feeManualOverride"
             @update:model-value="onNominalChanged"
@@ -282,15 +298,33 @@
 
           <!-- Banner Tarif / Peringatan Tarif Belum Ada -->
           <FeeBadge
-            v-if="['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(layanan)"
+            v-if="['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob', 'jasa_transfer'].includes(layanan)"
             :no-rule-banner="nominal > 0 && !matchedRule && fee === 0"
             :rule-name="matchedRule ? `Admin Rp ${fee.toLocaleString('id-ID')}` : undefined"
           />
+
+          <!-- Dropdown Diterima Di (b31) -->
+          <div v-if="hasPaymentAccount" class="form-group mt-3" data-testid="payment-account-group">
+            <label class="form-label" for="payment-account-select">Diterima Di</label>
+            <select
+              id="payment-account-select"
+              ref="paymentAccountRef"
+              v-model="paymentAccountId"
+              class="form-select"
+              data-testid="select-payment-account"
+              required
+            >
+              <option disabled value="">-- Pilih Akun Penerima --</option>
+              <option v-for="acc in availablePaymentAccounts" :key="acc.id" :value="acc.id">
+                {{ getPaymentOptionLabel(acc) }}
+              </option>
+            </select>
+          </div>
         </div>
 
         <!-- 4. Status Pembayaran (Lunas / Hutang) -->
         <div v-if="layanan !== 'operasional'" class="form-section card-section">
-          <div class="form-group">
+          <div v-if="layanan !== 'jasa_transfer'" class="form-group">
             <label class="form-label">Status Bayar</label>
             <div class="status-toggle">
               <button
@@ -315,7 +349,7 @@
           </div>
 
           <!-- Jika Status Bayar = Hutang: Wajib Pilih / Isi Pelanggan -->
-          <div v-if="paymentStatus === 'hutang'" class="debt-box">
+          <div v-if="paymentStatus === 'hutang' && layanan !== 'jasa_transfer'" class="debt-box">
             <label class="form-label text-warning">Pilih Pelanggan (Wajib)</label>
             <div class="customer-picker">
               <select
@@ -332,6 +366,21 @@
               </select>
             </div>
             <span class="form-hint">Pelanggan baru dapat ditambahkan di menu Master Pelanggan.</span>
+          </div>
+
+          <!-- Pelanggan Opsional untuk Jasa Transfer -->
+          <div v-if="layanan === 'jasa_transfer'" class="form-group">
+            <label class="form-label">Nama Pelanggan (Opsional)</label>
+            <select
+              v-model="selectedCustomerId"
+              class="form-select"
+              data-testid="select-customer-jasa-transfer"
+            >
+              <option value="">-- Tanpa Pelanggan / Pelanggan Umum --</option>
+              <option v-for="c in customerList" :key="c.id" :value="c.id">
+                {{ c.name }} {{ c.phone ? `(${c.phone})` : '' }}
+              </option>
+            </select>
           </div>
 
           <div class="form-group mt-2">
@@ -430,6 +479,7 @@ import {
   ChevronDown,
   Search,
   Check,
+  Landmark,
 } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import MoneyInput from '../components/MoneyInput.vue';
@@ -460,6 +510,7 @@ const isDateChanged = computed(() => transactionDateStr.value !== todayWita);
 const layanan = ref<string>('transfer');
 const sourceAccountId = ref<string>('');
 const destAccountId = ref<string>('');
+const paymentAccountId = ref<string>('');
 const selectedProductId = ref<string>('');
 const selectedCustomerId = ref<string>('');
 const nominal = ref<number>(0);
@@ -469,6 +520,64 @@ const feeManualOverride = ref<boolean>(false);
 const paymentStatus = ref<'lunas' | 'hutang'>('lunas');
 const referenceNo = ref<string>('');
 const note = ref<string>('');
+
+const paymentAccountRef = ref<HTMLSelectElement | null>(null);
+
+const hasPaymentAccount = computed(() => {
+  return [
+    'transfer',
+    'tarik_tunai',
+    'topup_ewallet',
+    'ppob',
+    'pulsa',
+    'data',
+    'token_pln',
+    'voucher',
+    'perdana',
+    'aksesoris',
+    'pemasukan_lain',
+  ].includes(layanan.value);
+});
+
+const availablePaymentAccounts = computed<Account[]>(() => {
+  if (!hasPaymentAccount.value) return [];
+  const srv = layanan.value;
+  if (srv === 'transfer') {
+    return activeAccounts.value.filter((a) => a.type === 'kas');
+  }
+  if (srv === 'tarik_tunai') {
+    return activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'kas');
+  }
+  return activeAccounts.value.filter(
+    (a) => a.type === 'kas' || (a.type === 'bank' && a.name.toLowerCase().includes('mandiri'))
+  );
+});
+
+function getPaymentOptionLabel(acc: Account): string {
+  if (layanan.value !== 'tarik_tunai' && acc.type === 'bank' && acc.name.toLowerCase().includes('mandiri')) {
+    return 'QR Mandiri (masuk ke Rekening Mandiri)';
+  }
+  return acc.name;
+}
+
+function initDefaultPaymentAccount() {
+  if (!hasPaymentAccount.value) {
+    paymentAccountId.value = '';
+    return;
+  }
+  const options = availablePaymentAccounts.value;
+  const kasKecil = options.find((a) => a.type === 'kas' && a.name.toLowerCase() === 'kas kecil');
+  if (kasKecil) {
+    paymentAccountId.value = kasKecil.id;
+  } else {
+    const firstKas = options.find((a) => a.type === 'kas');
+    if (firstKas) {
+      paymentAccountId.value = firstKas.id;
+    } else {
+      paymentAccountId.value = options[0]?.id || '';
+    }
+  }
+}
 
 const matchedRule = ref<AdminFeeRule | null>(null);
 const errorMessage = ref<string>('');
@@ -503,6 +612,7 @@ const submitBtnRef = ref<HTMLButtonElement | null>(null);
 const primaryServices = [
   { code: 'transfer', label: 'Transfer', icon: ArrowRightLeft, keywords: ['tf', 'kirim uang', 'bank', 'trans'] },
   { code: 'tarik_tunai', label: 'Tarik Tunai', icon: Banknote, keywords: ['tarik tunai', 'tarik', 'tunai', 'trans', 'cash out'] },
+  { code: 'jasa_transfer', label: 'Jasa Transfer', icon: Landmark, keywords: ['jasa transfer', 'edc', 'transfer edc', 'kirim uang edc'] },
   { code: 'topup_ewallet', label: 'E-Wallet', icon: Wallet, keywords: ['dana', 'gopay', 'ovo', 'shopeepay', 'linkaja', 'ewallet'] },
   { code: 'pulsa', label: 'Pulsa', icon: Smartphone, keywords: ['pul', 'reguler', 'telepon'] },
   { code: 'data', label: 'Paket Data', icon: Layers, keywords: ['kuota', 'paket data', 'internet', 'paket'] },
@@ -611,6 +721,7 @@ onMounted(async () => {
 
   // Muat akun
   activeAccounts.value = await db.accounts.filter((a) => a.isActive).toArray();
+  initDefaultPaymentAccount();
   // Muat produk lokal
   productList.value = await db.products.filter((p) => p.isActive).toArray();
   // Muat katalog
@@ -727,7 +838,9 @@ function focusElement(el: HTMLElement | FocusableElement | null | undefined) {
 
 function focusNextFieldAfterService(code: string) {
   nextTick(() => {
-    if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(code)) {
+    if (code === 'jasa_transfer') {
+      focusElement(referenceNoRef.value);
+    } else if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(code)) {
       focusElement(sourceAccountRef.value);
     } else if (['voucher', 'perdana', 'aksesoris'].includes(code)) {
       focusElement(productSelectRef.value);
@@ -769,6 +882,11 @@ function selectService(code: string) {
   layanan.value = code;
   selectedProductId.value = '';
   errorMessage.value = '';
+  if (code === 'jasa_transfer') {
+    paymentAccountId.value = '';
+    paymentStatus.value = 'lunas';
+    feePaidBy.value = 'cash';
+  }
   if (['pulsa', 'data', 'token_pln'].includes(code)) {
     const defaultServer = activeAccounts.value.find((a) => a.type === 'server_pulsa');
     if (defaultServer) sourceAccountId.value = defaultServer.id;
@@ -780,16 +898,30 @@ function selectService(code: string) {
       sourceAccountId.value = fallback ? fallback.id : '';
     }
   }
+  const validIds = availablePaymentAccounts.value.map((a) => a.id);
+  if (!validIds.includes(paymentAccountId.value)) {
+    initDefaultPaymentAccount();
+  }
   recalculateFee();
 }
 
 watch(layanan, (newCode) => {
+  if (newCode === 'jasa_transfer') {
+    paymentAccountId.value = '';
+    paymentStatus.value = 'lunas';
+    feePaidBy.value = 'cash';
+    return;
+  }
   if (newCode === 'tarik_tunai') {
     const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
     if (!curAcc || curAcc.type === 'ewallet') {
       const fallback = availableTarikTunaiSourceAccounts.value[0];
       sourceAccountId.value = fallback ? fallback.id : '';
     }
+  }
+  const validIds = availablePaymentAccounts.value.map((a) => a.id);
+  if (!validIds.includes(paymentAccountId.value)) {
+    initDefaultPaymentAccount();
   }
 });
 
@@ -801,7 +933,7 @@ async function onNominalChanged(val: number) {
 }
 
 function onNominalEnter() {
-  const hasAdmin = ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(layanan.value);
+  const hasAdmin = ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob', 'jasa_transfer'].includes(layanan.value);
   if (hasAdmin) {
     if (moneyInputRef.value && typeof moneyInputRef.value.focusAdmin === 'function') {
       moneyInputRef.value.focusAdmin();
@@ -818,6 +950,10 @@ function onNominalEnter() {
 }
 
 function onAdminEnter() {
+  if (layanan.value === 'jasa_transfer') {
+    focusElement(noteRef.value || submitBtnRef.value);
+    return;
+  }
   focusElement(statusLunasBtnRef.value);
 }
 
@@ -910,16 +1046,16 @@ async function handleSubmit() {
       {
         layanan: layanan.value,
         productId: selectedProductId.value || undefined,
-        // paymentAccountId otomatis diturunkan di transactionService
-        sourceAccountId: sourceAccountId.value || undefined,
+        paymentAccountId: hasPaymentAccount.value ? (paymentAccountId.value || undefined) : undefined,
+        sourceAccountId: (layanan.value === 'jasa_transfer') ? undefined : (sourceAccountId.value || undefined),
         destAccountId: destAccountId.value || undefined,
         nominal: nominal.value,
         fee: fee.value,
-        feePaidBy: feePaidBy.value,
+        feePaidBy: (layanan.value === 'jasa_transfer') ? 'cash' : feePaidBy.value,
         feeRuleId: matchedRule.value?.id,
         feeManualOverride: feeManualOverride.value,
         paymentMethod: 'tunai',
-        paymentStatus: paymentStatus.value,
+        paymentStatus: (layanan.value === 'jasa_transfer') ? 'lunas' : paymentStatus.value,
         customerId: selectedCustomerId.value || undefined,
         referenceNo: referenceNo.value || undefined,
         note: note.value || undefined,

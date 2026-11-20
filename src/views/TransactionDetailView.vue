@@ -235,7 +235,7 @@
 
             <!-- Akun: Sumber Dana & Diterima Di (Khusus Owner & Kepala Kasir) -->
             <div
-              v-if="canEditAccounts && transaction.sourceAccountId"
+              v-if="canEditAccounts && transaction.sourceAccountId && transaction.layanan !== 'jasa_transfer'"
               class="form-group"
             >
               <label class="form-label" for="edit-source-account">Sumber Dana</label>
@@ -252,7 +252,7 @@
             </div>
 
             <div
-              v-if="canEditAccounts && transaction.accountId && !['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok'].includes(transaction.layanan)"
+              v-if="canEditAccounts && transaction.accountId && !['pindah_dana', 'deposit_server', 'deposit_provider', 'pembelian_stok', 'jasa_transfer'].includes(transaction.layanan)"
               class="form-group"
             >
               <label class="form-label" for="edit-payment-account">Diterima Di</label>
@@ -263,7 +263,7 @@
                 data-testid="edit-select-payment-account"
               >
                 <option v-for="acc in availablePaymentAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }}
+                  {{ getPaymentOptionLabel(acc) }}
                 </option>
               </select>
             </div>
@@ -408,11 +408,24 @@ const availableSourceAccounts = computed(() => {
 
 const availablePaymentAccounts = computed(() => {
   if (!transaction.value) return [];
-  if (transaction.value.layanan === 'tarik_tunai') {
+  const srv = transaction.value.layanan;
+  if (srv === 'transfer') {
+    return activeAccounts.value.filter((a) => a.type === 'kas');
+  }
+  if (srv === 'tarik_tunai') {
     return activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'kas');
   }
-  return activeAccounts.value.filter((a) => a.type === 'kas');
+  return activeAccounts.value.filter(
+    (a) => a.type === 'kas' || (a.type === 'bank' && a.name.toLowerCase().includes('mandiri'))
+  );
 });
+
+function getPaymentOptionLabel(acc: Account): string {
+  if (transaction.value?.layanan !== 'tarik_tunai' && acc.type === 'bank' && acc.name.toLowerCase().includes('mandiri')) {
+    return 'QR Mandiri (masuk ke Rekening Mandiri)';
+  }
+  return acc.name;
+}
 
 // Approval State untuk Kasir
 const showApprovalPrompt = ref<boolean>(false);

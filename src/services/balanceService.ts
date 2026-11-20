@@ -49,6 +49,9 @@ export class BalanceService {
     const hJual = feePaidBy === 'debit_rekening' ? nominal : nominal + fee;
 
     switch (layanan) {
+      case 'jasa_transfer':
+        return [];
+
       case 'transfer':
       case 'topup_ewallet':
       case 'ppob': {

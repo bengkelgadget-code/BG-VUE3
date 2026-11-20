@@ -19,6 +19,7 @@ export const SERVICE_CODES = {
   PEMBELIAN_STOK: 'pembelian_stok',
   OPERASIONAL: 'operasional',
   PEMASUKAN_LAIN: 'pemasukan_lain',
+  JASA_TRANSFER: 'jasa_transfer',
 } as const;
 
 export type ServiceCode = typeof SERVICE_CODES[keyof typeof SERVICE_CODES];
@@ -50,6 +51,7 @@ export const SERVICE_LABELS: Record<string, string> = {
   pembelian_stok: 'Pembelian Stok',
   operasional: 'Operasional',
   pemasukan_lain: 'Pemasukan Lain',
+  jasa_transfer: 'Jasa Transfer',
 };
 
 export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
