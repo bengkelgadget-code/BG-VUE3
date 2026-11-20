@@ -1,11 +1,11 @@
 {
-  "bundle_checksum": "977c9971d89812432e328757bbbef60d5bc561e485f090600218cc6bdd9491b0",
-  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b25/update.zip",
-  "bundle_version": "1795139105957",
-  "changelog": "Perbaiki laporan pembelian stok (Keluar = harga beli, tanpa laba di muka) + kembalikan validasi akun Kas untuk kasir + Home kasir tanpa shift + harga pulsa/token/game dari database mitra Bengkel Gadget (selalu update)",
-  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b25/buku-konter-v0.2.0-b25.apk",
+  "bundle_checksum": "",
+  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b26/update.zip",
+  "bundle_version": "v0.2.0-b26",
+  "changelog": "Kestabilan tes (perbaiki tes UI yang gagal-acak saat suite penuh; tanpa perubahan perilaku aplikasi)",
+  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b26/buku-konter-v0.2.0-b26.apk",
   "force_update": false,
   "min_apk_version_code": 18,
-  "version_code": 25,
+  "version_code": 26,
   "version_name": "0.2.0"
 }

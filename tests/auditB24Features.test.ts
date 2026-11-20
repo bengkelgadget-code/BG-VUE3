@@ -18,6 +18,7 @@ import {
   compareCustomers,
   compareFeeRules,
 } from '../src/utils/productSort';
+import { waitFor, waitForText } from './helpers/testUtils';
 import HomeView from '../src/views/HomeView.vue';
 import AccountsView from '../src/views/AccountsView.vue';
 import TransactionsView from '../src/views/TransactionsView.vue';
@@ -164,9 +165,8 @@ describe('Audit b24 Features Suite', () => {
       const wrapper = mount(HomeView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
+      // Gunakan polling waitForText agar tahan flakiness saat suite berjalan paralel
+      await waitForText(wrapper, 'Rp 19.303.137');
 
       // Total saldo kas di HomeView
       expect(wrapper.text()).toContain('Rp 19.303.137');
@@ -214,14 +214,12 @@ describe('Audit b24 Features Suite', () => {
       const wrapper = mount(HomeView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
-
-      const txCards = wrapper.findAll('.recent-tx-card');
-      expect(txCards.length).toBe(5);
-      // Yang terbaru tx-6 (Rp 60.000) harus muncul paling atas
-      expect(txCards[0]?.text()).toContain('Rp 60.000');
+      await waitFor(() => {
+        const txCards = wrapper.findAll('.recent-tx-card');
+        expect(txCards.length).toBe(5);
+        // Yang terbaru tx-6 (Rp 60.000) harus muncul paling atas
+        expect(txCards[0]?.text()).toContain('Rp 60.000');
+      });
       expect(wrapper.text()).not.toContain('Belum ada transaksi');
 
       wrapper.unmount();
@@ -613,21 +611,19 @@ describe('Audit b24 Features Suite', () => {
       const wrapper = mount(MastersView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
+      await waitFor(() => {
+        // Cek kartu produk katalog
+        const card = wrapper.find('[data-testid="product-card-SKU-ML-86"]');
+        expect(card.exists()).toBe(true);
+        expect(card.find('[data-testid="badge-catalog"]').text()).toBe('KATALOG');
+        expect(card.text()).toContain('Jual: —');
+        expect(card.text()).toContain('Modal: —');
+      });
 
       // Cek chip tab: Game ada, Paket Data tidak ada
       const tabs = wrapper.findAll('.cat-tab').map((t) => t.text());
       expect(tabs).toContain('Game');
       expect(tabs).not.toContain('Paket Data');
-
-      // Cek kartu produk katalog
-      const card = wrapper.find('[data-testid="product-card-SKU-ML-86"]');
-      expect(card.exists()).toBe(true);
-      expect(card.find('[data-testid="badge-catalog"]').text()).toBe('KATALOG');
-      expect(card.text()).toContain('Jual: —');
-      expect(card.text()).toContain('Modal: —');
 
       wrapper.unmount();
     });
@@ -690,15 +686,12 @@ describe('Audit b24 Features Suite', () => {
       const wrapper = mount(ProductFormView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
-
-      const nameInput = wrapper.find('#product-name').element as HTMLInputElement;
-      expect(nameInput.value).toBe('Pulsa Telkomsel 50.000');
-
-      const catSelect = wrapper.find('#product-category').element as HTMLSelectElement;
-      expect(catSelect.value).toBe('pulsa');
+      await waitFor(() => {
+        const nameInput = wrapper.find('#product-name').element as HTMLInputElement;
+        expect(nameInput.value).toBe('Pulsa Telkomsel 50.000');
+        const catSelect = wrapper.find('#product-category').element as HTMLSelectElement;
+        expect(catSelect.value).toBe('pulsa');
+      });
 
       // Isi modal dan harga jual manual
       await wrapper.find('#product-modal').setValue('49500');
@@ -707,17 +700,15 @@ describe('Audit b24 Features Suite', () => {
 
       // Submit form
       await wrapper.find('form').trigger('submit');
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
-
-      // Cek bahwa produk lokal berhasil dibuat dari katalog
-      const created = await db.products.where('externalProductRef').equals('SKU-TSEL-50K').first();
-      expect(created).toBeDefined();
-      expect(created?.name).toBe('Pulsa Telkomsel 50.000');
-      expect(created?.modal).toBe(49500);
-      expect(created?.hargaJual).toBe(52000);
-      expect(created?.category).toBe('pulsa');
+      await waitFor(async () => {
+        // Cek bahwa produk lokal berhasil dibuat dari katalog
+        const created = await db.products.where('externalProductRef').equals('SKU-TSEL-50K').first();
+        expect(created).toBeDefined();
+        expect(created?.name).toBe('Pulsa Telkomsel 50.000');
+        expect(created?.modal).toBe(49500);
+        expect(created?.hargaJual).toBe(52000);
+        expect(created?.category).toBe('pulsa');
+      });
 
       wrapper.unmount();
     });

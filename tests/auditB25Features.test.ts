@@ -15,6 +15,7 @@ import {
 } from '../src/services/catalogService';
 import { authService } from '../src/services/authService';
 import { useAuthStore } from '../src/stores/authStore';
+import { waitFor, waitForText } from './helpers/testUtils';
 import HomeView from '../src/views/HomeView.vue';
 import MastersView from '../src/views/MastersView.vue';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -509,12 +510,8 @@ describe('Audit b25 Features Suite (PROMPT b25 Wajib)', () => {
       const wrapper = mount(HomeView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
-
       // Transaksi Terakhir harus menampilkan EmptyState "Belum ada transaksi"
-      expect(wrapper.text()).toContain('Belum ada transaksi');
+      await waitForText(wrapper, 'Belum ada transaksi');
       expect(wrapper.find('[data-testid="recent-tx-tx-other-shift"]').exists()).toBe(false);
 
       wrapper.unmount();
@@ -578,12 +575,10 @@ describe('Audit b25 Features Suite (PROMPT b25 Wajib)', () => {
       const wrapper = mount(HomeView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
-
-      expect(wrapper.find('[data-testid="recent-tx-tx-current-shift"]').exists()).toBe(true);
-      expect(wrapper.find('[data-testid="recent-tx-tx-other"]').exists()).toBe(false);
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="recent-tx-tx-current-shift"]').exists()).toBe(true);
+        expect(wrapper.find('[data-testid="recent-tx-tx-other"]').exists()).toBe(false);
+      });
 
       wrapper.unmount();
     });
@@ -618,11 +613,9 @@ describe('Audit b25 Features Suite (PROMPT b25 Wajib)', () => {
       const wrapper = mount(HomeView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
-
-      expect(wrapper.find('[data-testid="recent-tx-tx-shift-a"]').exists()).toBe(true);
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="recent-tx-tx-shift-a"]').exists()).toBe(true);
+      });
 
       wrapper.unmount();
     });
@@ -967,15 +960,13 @@ describe('Audit b25 Features Suite (PROMPT b25 Wajib)', () => {
       const wrapper = mount(MastersView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 60));
-      await flushPromises();
-
-      const card = wrapper.find('[data-testid="product-card-TSEL125-VIEW"]');
-      expect(card.exists()).toBe(true);
-      expect(card.text()).toContain('Jual: Rp 130.000');
-      expect(card.text()).toContain('Modal: Rp 123.465');
-      expect(card.text()).toContain('(Harga DB)');
+      await waitFor(() => {
+        const card = wrapper.find('[data-testid="product-card-TSEL125-VIEW"]');
+        expect(card.exists()).toBe(true);
+        expect(card.text()).toContain('Jual: Rp 130.000');
+        expect(card.text()).toContain('Modal: Rp 123.465');
+        expect(card.text()).toContain('(Harga DB)');
+      });
 
       wrapper.unmount();
     });

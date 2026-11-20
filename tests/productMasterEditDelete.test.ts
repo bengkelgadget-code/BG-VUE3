@@ -7,6 +7,7 @@ import { db } from '../src/db/database';
 import { productService } from '../src/services/productService';
 import { authService } from '../src/services/authService';
 import { useAuthStore } from '../src/stores/authStore';
+import { waitFor } from './helpers/testUtils';
 import MastersView from '../src/views/MastersView.vue';
 import ProductFormView from '../src/views/ProductFormView.vue';
 import type { User } from '../src/db/types';
@@ -370,10 +371,11 @@ describe('Master Produk: Fungsi Edit dan Hapus', () => {
       const wrapper = mount(ProductFormView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
+      await waitFor(() => {
+        expect(wrapper.find('.page-title').text()).toBe('Edit Produk Master');
+        expect((wrapper.find('#product-name').element as HTMLInputElement).value).toBe('Perdana Smartfren 30GB');
+      });
 
-      expect(wrapper.find('.page-title').text()).toBe('Edit Produk Master');
-      expect((wrapper.find('#product-name').element as HTMLInputElement).value).toBe('Perdana Smartfren 30GB');
       expect((wrapper.find('#product-category').element as HTMLSelectElement).value).toBe('perdana');
       expect((wrapper.find('#product-operator').element as HTMLInputElement).value).toBe('Smartfren');
       expect((wrapper.find('#product-modal').element as HTMLInputElement).value).toBe('40.000');
@@ -412,7 +414,9 @@ describe('Master Produk: Fungsi Edit dan Hapus', () => {
       const wrapper = mount(ProductFormView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
+      await waitFor(() => {
+        expect((wrapper.find('#product-name').element as HTMLInputElement).value).toBe('Voucher Lama');
+      });
 
       // Ubah nama & harga jual
       await wrapper.find('#product-name').setValue('Voucher Baru Update');
@@ -420,14 +424,12 @@ describe('Master Produk: Fungsi Edit dan Hapus', () => {
       await wrapper.find('#product-harga-jual').trigger('input');
 
       await wrapper.find('form').trigger('submit.prevent');
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
-
-      const updated = await productService.getProduct(prodId);
-      expect(updated?.name).toBe('Voucher Baru Update');
-      expect(updated?.hargaJual).toBe(14000);
-      expect(router.currentRoute.value.path).toBe('/masters');
+      await waitFor(async () => {
+        const updated = await productService.getProduct(prodId);
+        expect(updated?.name).toBe('Voucher Baru Update');
+        expect(updated?.hargaJual).toBe(14000);
+        expect(router.currentRoute.value.path).toBe('/masters');
+      });
     });
 
     it('menekan tombol Hapus Produk menampilkan dialog konfirmasi, dan konfirmasi menghapus produk', async () => {
@@ -454,7 +456,10 @@ describe('Master Produk: Fungsi Edit dan Hapus', () => {
       const wrapper = mount(ProductFormView, {
         global: { plugins: [router] },
       });
-      await flushPromises();
+      // Tunggu form ter-mount dan tombol delete tersedia
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="btn-delete-product"]').exists()).toBe(true);
+      });
 
       // Modal konfirmasi awalnya tidak muncul
       expect(wrapper.find('[data-testid="delete-confirm-modal"]').exists()).toBe(false);
@@ -462,25 +467,25 @@ describe('Master Produk: Fungsi Edit dan Hapus', () => {
       // Klik tombol Hapus Produk
       const btnDelete = wrapper.find('[data-testid="btn-delete-product"]');
       await btnDelete.trigger('click');
-      await flushPromises();
 
       // Modal konfirmasi muncul
-      const modal = wrapper.find('[data-testid="delete-confirm-modal"]');
-      expect(modal.exists()).toBe(true);
-      expect(modal.text()).toContain('Hapus Produk?');
-      expect(modal.text()).toContain('Produk Yang Akan Dihapus');
+      await waitFor(() => {
+        const modal = wrapper.find('[data-testid="delete-confirm-modal"]');
+        expect(modal.exists()).toBe(true);
+        expect(modal.text()).toContain('Hapus Produk?');
+        expect(modal.text()).toContain('Produk Yang Akan Dihapus');
+      });
 
       // Klik tombol Ya, Hapus
       const btnConfirm = wrapper.find('[data-testid="btn-confirm-delete"]');
       await btnConfirm.trigger('click');
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
 
       // Produk terhapus dari DB dan diarahkan kembali ke /masters
-      const inDb = await productService.getProduct(prodId);
-      expect(inDb).toBeUndefined();
-      expect(router.currentRoute.value.path).toBe('/masters');
+      await waitFor(async () => {
+        const inDb = await productService.getProduct(prodId);
+        expect(inDb).toBeUndefined();
+        expect(router.currentRoute.value.path).toBe('/masters');
+      });
     });
   });
 });
