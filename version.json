@@ -1,7 +1,7 @@
 {
-  "bundle_checksum": "",
+  "bundle_checksum": "4cad89e9466f8a2313f83dcea7360f3456c6322a13952028ae71193f4b43682b",
   "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b26/update.zip",
-  "bundle_version": "v0.2.0-b26",
+  "bundle_version": "1795142780842",
   "changelog": "Kestabilan tes (perbaiki tes UI yang gagal-acak saat suite penuh; tanpa perubahan perilaku aplikasi)",
   "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b26/buku-konter-v0.2.0-b26.apk",
   "force_update": false,
