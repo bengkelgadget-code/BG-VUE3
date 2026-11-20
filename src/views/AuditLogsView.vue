@@ -7,15 +7,12 @@
 
     <!-- Filter Actions -->
     <div class="filter-bar">
-      <select v-model="selectedAction" class="filter-select">
-        <option value="">Semua Aksi</option>
-        <option value="koreksi_saldo">Koreksi Saldo</option>
-        <option value="void_transaksi">Void Transaksi</option>
-        <option value="opname">Opname Stok</option>
-        <option value="handover">Serah Terima Shift</option>
-        <option value="ubah_pin">Ubah PIN</option>
-        <option value="login">Login Petugas</option>
-      </select>
+      <SearchableSelect
+        v-model="selectedAction"
+        :options="actionOptions"
+        placeholder="Semua Aksi"
+        search-placeholder="Cari aksi..."
+      />
     </div>
 
     <!-- Loading & Empty States -->
@@ -60,6 +57,7 @@ import { db } from '../db/database';
 import { useAuthStore } from '../stores/authStore';
 import type { AuditLog, User } from '../db/types';
 import { formatTanggalWita } from '../utils/format';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -67,6 +65,16 @@ const logs = ref<AuditLog[]>([]);
 const users = ref<User[]>([]);
 const selectedAction = ref<string>('');
 const isLoading = ref<boolean>(true);
+
+const actionOptions = [
+  { value: '', label: 'Semua Aksi' },
+  { value: 'koreksi_saldo', label: 'Koreksi Saldo' },
+  { value: 'void_transaksi', label: 'Void Transaksi' },
+  { value: 'opname', label: 'Opname Stok' },
+  { value: 'handover', label: 'Serah Terima Shift' },
+  { value: 'ubah_pin', label: 'Ubah PIN' },
+  { value: 'login', label: 'Login Petugas' },
+];
 
 const filteredLogs = computed(() => {
   if (!selectedAction.value) return logs.value;

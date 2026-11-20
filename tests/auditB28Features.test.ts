@@ -24,6 +24,7 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
   let kasLaci: Account;
   let kasToko: Account;
   let bankBca: Account;
+  let bankMandiri: Account;
 
   function setLoggedInUser(user: User) {
     const authStore = useAuthStore(pinia);
@@ -57,6 +58,7 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
         paymentMethod: 'tunai',
         paymentStatus: 'lunas',
         sourceAccountId: opts.sourceAccountId,
+        paymentAccountId: opts.paymentAccountId,
         date: Date.now(),
       },
       { actorUserId: opts.actorUserId, shiftId: opts.shiftId ?? 'shift-test-1' }
@@ -153,12 +155,18 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       type: 'bank',
       initialBalance: 10000000,
     });
+    const b2Id = await accountService.addAccount({
+      name: 'Bank Mandiri',
+      type: 'bank',
+      initialBalance: 15000000,
+    });
 
     kasKecil = (await db.accounts.get(k1Id))!;
     kasBesar = (await db.accounts.get(k2Id))!;
     kasLaci = (await db.accounts.get(k3Id))!;
     kasToko = (await db.accounts.get(k4Id))!;
     bankBca = (await db.accounts.get(bId))!;
+    bankMandiri = (await db.accounts.get(b2Id))!;
 
     // Default shift aktif untuk pengujian
     await db.shifts.add({
@@ -183,42 +191,42 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
   describe('A. Service Logic Edit Akun', () => {
     it('A.3.1 Service: ubah sumber saja pada Tarik Tunai mengembalikan saldo sumber lama dan memotong/menambah sumber baru', async () => {
       // Buat transaksi tarik tunai Rp 1.000.000, fee 7.000
-      // Sumber dana: kasKecil, payment: kasLaci
+      // Sumber dana (rekening terima transfer): bankBca, payment: kasLaci
       // Tarik tunai: sumber menerima transfer (+1jt), payment kasir menyerahkan cash -(1jt - 7rb = 993rb)
       const txId = await createSetupTarikTunai({
         nominal: 1000000,
         fee: 7000,
-        sourceAccountId: kasKecil.id,
+        sourceAccountId: bankBca.id,
         paymentAccountId: kasLaci.id,
         actorUserId: ownerUser.id,
       });
 
       // Verifikasi saldo awal setelah transaksi
-      // kasKecil awal 2jt + 1jt = 3jt
+      // bankBca awal 10jt + 1jt = 11jt
       // kasLaci awal 1jt - 993rb = 7.000
-      expect(await accountService.getBalance(kasKecil.id)).toBe(3000000);
-      expect(await accountService.getBalance(kasBesar.id)).toBe(5000000);
+      expect(await accountService.getBalance(bankBca.id)).toBe(11000000);
+      expect(await accountService.getBalance(bankMandiri.id)).toBe(15000000);
       expect(await accountService.getBalance(kasLaci.id)).toBe(7000);
 
-      // Owner mengubah Sumber Dana dari Kas Kecil ke Kas Besar (payment tetap Kas Laci)
+      // Owner mengubah Rekening Terima dari Bank BCA ke Bank Mandiri (payment tetap Kas Laci)
       await transactionService.editTransaction(
         txId,
         {
-          sourceAccountId: kasBesar.id,
+          sourceAccountId: bankMandiri.id,
         },
         { actorUserId: ownerUser.id }
       );
 
-      // Saldo Kas Kecil harus kembali ke 2.000.000 (pembalikan)
-      expect(await accountService.getBalance(kasKecil.id)).toBe(2000000);
-      // Saldo Kas Besar bertambah 1.000.000 menjadi 6.000.000 (baru)
-      expect(await accountService.getBalance(kasBesar.id)).toBe(6000000);
+      // Saldo Bank BCA harus kembali ke 10.000.000 (pembalikan)
+      expect(await accountService.getBalance(bankBca.id)).toBe(10000000);
+      // Saldo Bank Mandiri bertambah 1.000.000 menjadi 16.000.000 (baru)
+      expect(await accountService.getBalance(bankMandiri.id)).toBe(16000000);
       // Saldo Kas Laci tidak berubah (tetap 7.000)
       expect(await accountService.getBalance(kasLaci.id)).toBe(7000);
 
       // Record transaksi terupdate
       const updatedTx = await db.transactions.get(txId);
-      expect(updatedTx?.sourceAccountId).toBe(kasBesar.id);
+      expect(updatedTx?.sourceAccountId).toBe(bankMandiri.id);
       expect(updatedTx?.nominal).toBe(1000000);
       expect(updatedTx?.fee).toBe(7000);
 
@@ -227,16 +235,16 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       const audit = audits.find((a) => a.action === 'edit_transaksi');
       expect(audit).toBeDefined();
       const detail = JSON.parse(audit?.detail || '{}');
-      expect(detail.old.sourceAccount.name).toBe('Kas Kecil');
-      expect(detail.new.sourceAccount.name).toBe('Kas Besar');
+      expect(detail.old.sourceAccount.name).toBe('Bank BCA');
+      expect(detail.new.sourceAccount.name).toBe('Bank Mandiri');
     });
 
     it('A.3.2 Service: ubah payment saja pada Tarik Tunai mengembalikan payment lama dan menerapkan payment baru', async () => {
-      // Buat transaksi tarik tunai Rp 1.000.000, fee 7.000 (sumber Kas Kecil, payment Kas Laci)
+      // Buat transaksi tarik tunai Rp 1.000.000, fee 7.000 (sumber Bank BCA, payment Kas Laci)
       const txId = await createSetupTarikTunai({
         nominal: 1000000,
         fee: 7000,
-        sourceAccountId: kasKecil.id,
+        sourceAccountId: bankBca.id,
         paymentAccountId: kasLaci.id,
         actorUserId: ownerUser.id,
       });
@@ -250,8 +258,8 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
         { actorUserId: ownerUser.id }
       );
 
-      // Sumber Kas Kecil tidak bergerak (tetap 3.000.000)
-      expect(await accountService.getBalance(kasKecil.id)).toBe(3000000);
+      // Sumber Bank BCA tidak bergerak (tetap 11.000.000)
+      expect(await accountService.getBalance(bankBca.id)).toBe(11000000);
       // Kas Laci (payment lama) kembali penuh ke 1.000.000
       expect(await accountService.getBalance(kasLaci.id)).toBe(1000000);
       // Kas Toko (payment baru) berkurang 993.000 (3.000.000 - 993.000 = 2.007.000)
@@ -272,32 +280,32 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       const txId = await createSetupTarikTunai({
         nominal: 1000000,
         fee: 7000,
-        sourceAccountId: kasKecil.id,
+        sourceAccountId: bankBca.id,
         paymentAccountId: kasLaci.id,
         actorUserId: ownerUser.id,
       });
 
-      // Ubah sumber: Kas Kecil -> Kas Besar
+      // Ubah sumber: Bank BCA -> Bank Mandiri
       // Ubah payment: Kas Laci -> Kas Toko
       // Ubah nominal: 1.000.000 -> 1.200.000 (fee tetap 7.000)
-      // Baru: Kas Besar bertambah 1.200.000 (5jt -> 6.2jt)
+      // Baru: Bank Mandiri bertambah 1.200.000 (15jt -> 16.2jt)
       // Baru: Kas Toko berkurang (1.200.000 - 7.000 = 1.193.000) -> 3jt - 1.193.000 = 1.807.000
       await transactionService.editTransaction(
         txId,
         {
           nominal: 1200000,
-          sourceAccountId: kasBesar.id,
+          sourceAccountId: bankMandiri.id,
           paymentAccountId: kasToko.id,
         },
         { actorUserId: ownerUser.id }
       );
 
       // Lama kembali utuh:
-      expect(await accountService.getBalance(kasKecil.id)).toBe(2000000);
+      expect(await accountService.getBalance(bankBca.id)).toBe(10000000);
       expect(await accountService.getBalance(kasLaci.id)).toBe(1000000);
 
       // Baru diterapkan tepat:
-      expect(await accountService.getBalance(kasBesar.id)).toBe(6200000);
+      expect(await accountService.getBalance(bankMandiri.id)).toBe(16200000);
       expect(await accountService.getBalance(kasToko.id)).toBe(1807000);
     });
 
@@ -305,8 +313,8 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       const txId = await createSetupTarikTunai({
         nominal: 1000000,
         fee: 7000,
-        sourceAccountId: kasKecil.id,
-        paymentAccountId: kasLaci.id,
+        sourceAccountId: bankBca.id,
+        paymentAccountId: kasToko.id,
         actorUserId: ownerUser.id,
       });
 
@@ -314,7 +322,7 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       await expect(
         transactionService.editTransaction(
           txId,
-          { sourceAccountId: kasBesar.id },
+          { sourceAccountId: bankMandiri.id },
           { actorUserId: kepalaKasirUser.id }
         )
       ).resolves.toBeUndefined();
@@ -367,7 +375,7 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       const txId = await createSetupTarikTunai({
         nominal: 500000,
         fee: 5000,
-        sourceAccountId: kasKecil.id,
+        sourceAccountId: bankBca.id,
         paymentAccountId: kasLaci.id,
         actorUserId: ownerUser.id,
       });
@@ -420,7 +428,7 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       const txId = await createSetupTarikTunai({
         nominal: 300000,
         fee: 5000,
-        sourceAccountId: kasKecil.id,
+        sourceAccountId: bankBca.id,
         paymentAccountId: kasLaci.id,
         actorUserId: ownerUser.id,
       });
@@ -446,7 +454,7 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
       const txId = await createSetupTarikTunai({
         nominal: 1000000,
         fee: 7000,
-        sourceAccountId: kasKecil.id,
+        sourceAccountId: bankBca.id,
         paymentAccountId: kasLaci.id,
         actorUserId: ownerUser.id,
       });
@@ -476,19 +484,19 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
         expect(wrapper.find('[data-testid="edit-dialog"]').exists()).toBe(true);
       });
 
-      // Dropdown Sumber Dana & Diterima Di HARUS muncul untuk Owner
+      // Dropdown Sumber Dana & Rekening Terima HARUS muncul untuk Owner
       expect(wrapper.find('[data-testid="edit-select-source-account"]').exists()).toBe(true);
       expect(wrapper.find('[data-testid="edit-select-payment-account"]').exists()).toBe(true);
 
       // Nilai awal harus sesuai
       const sourceSelect = wrapper.find('[data-testid="edit-select-source-account"]');
-      expect((sourceSelect.element as HTMLSelectElement).value).toBe(kasKecil.id);
+      expect((sourceSelect.element as HTMLSelectElement).value).toBe(bankBca.id);
 
-      // Opsi "Diterima Di" untuk Tarik Tunai: kas + bank (b30)
+      // Opsi "Sumber Dana" Kasir untuk Tarik Tunai: kas (b33)
       const paymentOptions = wrapper.findAll('[data-testid="edit-select-payment-account"] option');
       const paymentOptionValues = paymentOptions.map((o) => (o.element as HTMLOptionElement).value);
-      expect(paymentOptionValues).toContain(bankBca.id);
       expect(paymentOptionValues).toContain(kasLaci.id);
+      expect(paymentOptionValues).toContain(kasBesar.id);
 
       wrapper.unmount();
       await flushPromises();
@@ -574,7 +582,7 @@ describe('Audit b28 Features: Edit Akun Transaksi untuk Owner & Kepala Kasir', (
           feeManualOverride: false,
           paymentMethod: 'tunai',
           paymentStatus: 'lunas',
-          sourceAccountId: kasBesar.id,
+          sourceAccountId: bankBca.id,
           accountId: otherAccount.id, // Seharusnya diabaikan oleh addTransaction
           date: Date.now(),
         },

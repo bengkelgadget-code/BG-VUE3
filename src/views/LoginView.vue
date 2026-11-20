@@ -50,12 +50,14 @@
       <form v-else class="login-form" @submit.prevent="handleLogin">
         <div class="form-group">
           <label for="select-user" class="form-label">Pilih Petugas</label>
-          <select id="select-user" v-model="selectedUserId" class="form-select" required>
-            <option disabled value="">-- Pilih Petugas --</option>
-            <option v-for="u in userList" :key="u.id" :value="u.id">
-              {{ u.name }} ({{ u.role.toUpperCase() }})
-            </option>
-          </select>
+          <SearchableSelect
+            id="select-user"
+            v-model="selectedUserId"
+            :options="userSelectOptions"
+            placeholder="-- Pilih Petugas --"
+            search-placeholder="Cari petugas..."
+            required
+          />
         </div>
 
         <div class="form-group">
@@ -85,19 +87,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { db } from '../db/database';
 import type { User } from '../db/types';
 import { useAuthStore } from '../stores/authStore';
 import { supabaseSyncService } from '../services/supabaseSyncService';
 import { AppError } from '../core/errors';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
 
 const userList = ref<User[]>([]);
 const selectedUserId = ref('');
+
+const userSelectOptions = computed(() =>
+  userList.value.map((u) => ({
+    value: u.id,
+    label: `${u.name} (${u.role.toUpperCase()})`,
+  }))
+);
 const pin = ref('');
 const errorMessage = ref('');
 const isLoading = ref(false);

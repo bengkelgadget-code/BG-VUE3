@@ -17,9 +17,12 @@ import {
 } from '../src/utils/productSort';
 import { transactionService } from '../src/services/transactionService';
 import { reportService } from '../src/services/reportService';
+import { receivableService } from '../src/services/receivableService';
 import { authService } from '../src/services/authService';
 import { useAuthStore } from '../src/stores/authStore';
 import AddTransactionView from '../src/views/AddTransactionView.vue';
+import TransactionDetailView from '../src/views/TransactionDetailView.vue';
+import { waitFor } from './helpers/testUtils';
 import type { User, Account, Product, ProductCatalogEntry } from '../src/db/types';
 
 describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Staf', () => {
@@ -28,7 +31,10 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
   let kasirUser: User;
 
   let accKasKecil: Account;
+  let accKasBesar: Account;
   let accBankBca: Account;
+  let accBankMandiri: Account;
+  let accEwalletDana: Account;
   let accServerPulsa: Account;
 
   beforeEach(async () => {
@@ -82,6 +88,17 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       createdAt: now,
       updatedAt: now,
     };
+    accKasBesar = {
+      id: 'acc-kas-besar',
+      name: 'Kas Besar',
+      type: 'kas',
+      initialBalance: 5000000,
+      isActive: true,
+      icon: 'wallet',
+      color: 'emerald',
+      createdAt: now,
+      updatedAt: now,
+    };
     accBankBca = {
       id: 'acc-bca',
       name: 'Bank BCA',
@@ -90,6 +107,28 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       isActive: true,
       icon: 'landmark',
       color: 'blue',
+      createdAt: now,
+      updatedAt: now,
+    };
+    accBankMandiri = {
+      id: 'acc-mandiri',
+      name: 'Bank Mandiri',
+      type: 'bank',
+      initialBalance: 3000000,
+      isActive: true,
+      icon: 'landmark',
+      color: 'yellow',
+      createdAt: now,
+      updatedAt: now,
+    };
+    accEwalletDana = {
+      id: 'acc-dana',
+      name: 'DANA',
+      type: 'ewallet',
+      initialBalance: 1500000,
+      isActive: true,
+      icon: 'wallet',
+      color: 'sky',
       createdAt: now,
       updatedAt: now,
     };
@@ -104,7 +143,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       createdAt: now,
       updatedAt: now,
     };
-    await db.accounts.bulkAdd([accKasKecil, accBankBca, accServerPulsa]);
+    await db.accounts.bulkAdd([accKasKecil, accKasBesar, accBankBca, accBankMandiri, accEwalletDana, accServerPulsa]);
 
     await db.shifts.add({
       id: 'shift-1',
@@ -175,7 +214,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       expect(productCategoriesForLayanan('pulsa')).toEqual(['pulsa']);
       expect(productCategoriesForLayanan('voucher')).toEqual(['voucher']);
       expect(paymentRuleForLayanan('transfer')).toBe('kas');
-      expect(paymentRuleForLayanan('tarik_tunai')).toBe('kas-bank');
+      expect(paymentRuleForLayanan('tarik_tunai')).toBe('none');
     });
   });
 
@@ -222,7 +261,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       await optVoucher?.trigger('click');
       await flushPromises();
 
-      const physicalOptions = wrapper.findAll('select.form-select option');
+      const physicalOptions = wrapper.findAll('[data-testid="select-physical-product"] option');
       const optionTexts = physicalOptions.map((o) => o.text());
       expect(optionTexts.some((t) => t.includes('Telkomsel 10/28'))).toBe(true);
       expect(optionTexts.some((t) => t.includes('Kabel Micro Robot'))).toBe(false);
@@ -233,7 +272,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       await optAcc?.trigger('click');
       await flushPromises();
 
-      const accOptions = wrapper.findAll('select.form-select option');
+      const accOptions = wrapper.findAll('[data-testid="select-physical-product"] option');
       const accTexts = accOptions.map((o) => o.text());
       expect(accTexts.some((t) => t.includes('Kabel Micro Robot'))).toBe(true);
       expect(accTexts.some((t) => t.includes('Telkomsel 10/28'))).toBe(false);
@@ -244,7 +283,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       await optPulsa?.trigger('click');
       await flushPromises();
 
-      const pulsaOptions = wrapper.findAll('select.form-select option');
+      const pulsaOptions = wrapper.findAll('[data-testid="select-digital-product"] option');
       const pulsaTexts = pulsaOptions.map((o) => o.text());
       expect(pulsaTexts.some((t) => t.includes('Pulsa Telkomsel 10K'))).toBe(true);
       expect(pulsaTexts.some((t) => t.includes('Data Telkomsel 10GB'))).toBe(false);
@@ -257,7 +296,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       await optGame?.trigger('click');
       await flushPromises();
 
-      const gameOptions = wrapper.findAll('select.form-select option');
+      const gameOptions = wrapper.findAll('[data-testid="select-digital-product"] option');
       const gameTexts = gameOptions.map((o) => o.text());
       expect(gameTexts.some((t) => t.includes('Mobile Legends 86 Diamond'))).toBe(true);
       expect(gameTexts.some((t) => t.includes('Free Fire 140 Diamond'))).toBe(true);
@@ -334,29 +373,39 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       await optAcc?.trigger('click');
       await flushPromises();
 
-      const filterInput = wrapper.find('[data-testid="filter-physical-product"]');
-      expect(filterInput.exists()).toBe(true);
+      // Buka dropdown produk fisik
+      const prodTrigger = wrapper.find('[data-testid="select-physical-product-trigger"]');
+      await prodTrigger.trigger('click');
+      await flushPromises();
+
+      const searchInput = wrapper.find('[data-testid="select-physical-product-search"]');
+      expect(searchInput.exists()).toBe(true);
 
       // Ketik "robot" -> menyaring hanya produk Robot
-      await filterInput.setValue('robot');
+      await searchInput.setValue('robot');
       await flushPromises();
 
-      let options = wrapper.findAll('select.form-select option');
-      expect(options.some((o) => o.text().includes('Kabel Micro Robot'))).toBe(true);
-      expect(options.some((o) => o.text().includes('Headset Robot Bass'))).toBe(true);
-      expect(options.some((o) => o.text().includes('Adaptor Charger Acome'))).toBe(false);
+      let visibleItems = wrapper.findAll('.searchable-option-item');
+      expect(visibleItems.some((o) => o.text().includes('Kabel Micro Robot'))).toBe(true);
+      expect(visibleItems.some((o) => o.text().includes('Headset Robot Bass'))).toBe(true);
+      expect(visibleItems.some((o) => o.text().includes('Adaptor Charger Acome'))).toBe(false);
 
       // Pilih salah satu produk (Kabel Micro Robot)
-      const select = wrapper.find('select.form-select');
-      await select.setValue('p-acc-1');
+      const robotOpt = visibleItems.find((o) => o.text().includes('Kabel Micro Robot'));
+      await robotOpt?.trigger('click');
       await flushPromises();
 
-      // Ketik "acome" -> walau tidak cocok dengan "acome", produk terpilih (p-acc-1) tetap ada di options
-      await filterInput.setValue('acome');
+      // Buka lagi dropdown fisik dan ketik "acome"
+      await prodTrigger.trigger('click');
       await flushPromises();
-      options = wrapper.findAll('select.form-select option');
-      expect(options.some((o) => o.attributes('value') === 'p-acc-1')).toBe(true);
-      expect(options.some((o) => o.text().includes('Adaptor Charger Acome'))).toBe(true);
+      const searchInput2 = wrapper.find('[data-testid="select-physical-product-search"]');
+      await searchInput2.setValue('acome');
+      await flushPromises();
+
+      // Walau tidak cocok "acome", produk terpilih (p-acc-1) tetap ada karena preserveSelected: true
+      visibleItems = wrapper.findAll('.searchable-option-item');
+      expect(visibleItems.some((o) => o.text().includes('Kabel Micro Robot'))).toBe(true);
+      expect(visibleItems.some((o) => o.text().includes('Adaptor Charger Acome'))).toBe(true);
 
       // Ganti layanan -> filter query dan selectedProductId ter-reset
       await triggerBtn.trigger('click');
@@ -364,7 +413,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       await optPulsa?.trigger('click');
       await flushPromises();
 
-      expect((wrapper.find('[data-testid="filter-digital-product"]').element as HTMLInputElement).value).toBe('');
+      expect((wrapper.vm as unknown as { selectedProductId: string }).selectedProductId).toBe('');
     });
   });
 
@@ -415,7 +464,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       await flushPromises();
 
       // Simpan tanpa isi no HP
-      await (wrapper.vm as any).handleSubmit();
+      await (wrapper.vm as unknown as { handleSubmit: () => Promise<void> }).handleSubmit();
       await flushPromises();
       await new Promise((r) => setTimeout(r, 50));
       await flushPromises();
@@ -503,7 +552,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       await optAcc?.trigger('click');
       await flushPromises();
 
-      const select = wrapper.find('select.form-select');
+      const select = wrapper.find('[data-testid="select-physical-product"]');
       await select.setValue('p-acc-kabel');
       await select.trigger('change');
       await flushPromises();
@@ -566,6 +615,425 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
 
       const totalIn = await reportService.totalIn(now - 1000, now + 1000);
       expect(totalIn).toBe(20000);
+    });
+  });
+
+  describe('D.9: Tarik Tunai Aturan Akun (T1)', () => {
+    it('service menolak source bertipe kas dan payment bertipe bank dengan pesan spesifik', async () => {
+      // 1. Source bertipe kas -> ditolak
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'tarik_tunai',
+            sourceAccountId: accKasKecil.id,
+            paymentAccountId: accKasBesar.id,
+            nominal: 50000,
+            fee: 5000,
+            feeManualOverride: false,
+            feePaidBy: 'cash',
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            date: Date.now(),
+          },
+          { actorUserId: ownerUser.id, shiftId: 'shift-1' }
+        )
+      ).rejects.toThrow('Rekening Terima Tarik Tunai hanya Rekening Bank.');
+
+      // 2. Payment bertipe bank -> ditolak
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'tarik_tunai',
+            sourceAccountId: accBankBca.id,
+            paymentAccountId: accBankMandiri.id,
+            nominal: 50000,
+            fee: 5000,
+            feeManualOverride: false,
+            feePaidBy: 'cash',
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            date: Date.now(),
+          },
+          { actorUserId: ownerUser.id, shiftId: 'shift-1' }
+        )
+      ).rejects.toThrow('Sumber Dana Tarik Tunai hanya Kas Kecil atau Kas Besar.');
+    });
+
+    it('form input baru membatasi Sumber Dana hanya kas dan Rekening Terima hanya bank serta tidak menampilkan Diterima Di', async () => {
+      const wrapper = mount(AddTransactionView, {
+        global: {
+          plugins: [pinia, router],
+          stubs: {
+            AppScaffold: { template: '<div><slot /></div>' },
+          },
+        },
+      });
+
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
+      });
+
+      // Pilih layanan tarik_tunai
+      const trigger = wrapper.find('[data-testid="service-dropdown-trigger"]');
+      await trigger.trigger('click');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-option-tarik_tunai"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="service-option-tarik_tunai"]').trigger('click');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="select-payment-account"]').exists()).toBe(true);
+      });
+
+      // Opsi Sumber Dana (uang tunai yang diserahkan) -> hanya akun bertipe kas
+      const paymentSelect = wrapper.find('[data-testid="select-payment-account"]');
+      expect(paymentSelect.exists()).toBe(true);
+      const paymentOpts = paymentSelect.findAll('option').map((o) => o.text());
+      expect(paymentOpts.some((t) => t.includes('Kas Kecil'))).toBe(true);
+      expect(paymentOpts.some((t) => t.includes('Kas Besar'))).toBe(true);
+      expect(paymentOpts.some((t) => t.includes('Bank BCA'))).toBe(false);
+      expect(paymentOpts.some((t) => t.includes('DANA'))).toBe(false);
+
+      // Opsi Rekening Terima Transfer (ATM pelanggan masuk ke sini) -> hanya akun bertipe bank
+      const sourceSelect = wrapper.find('[data-testid="select-source-account"]');
+      expect(sourceSelect.exists()).toBe(true);
+      const sourceOpts = sourceSelect.findAll('option').map((o) => o.text());
+      expect(sourceOpts.some((t) => t.includes('Bank BCA'))).toBe(true);
+      expect(sourceOpts.some((t) => t.includes('Bank Mandiri'))).toBe(true);
+      expect(sourceOpts.some((t) => t.includes('Kas Kecil'))).toBe(false);
+      expect(sourceOpts.some((t) => t.includes('DANA'))).toBe(false);
+
+      // TIDAK ADA field "Diterima Di" untuk tarik_tunai
+      expect(wrapper.find('[data-testid="dest-account-dropdown"]').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('Diterima Di');
+    });
+
+    it('form edit tarik tunai: tidak ada Diterima Di dan transaksi lama dengan source kas tetap bisa dibuka lalu diperbaiki ke bank', async () => {
+      // Buat transaksi lama tarik tunai dengan sourceAccountId = kas (data legacy)
+      const now = Date.now();
+      const legacyTxId = 'tx-legacy-tarik-1';
+      await db.transactions.add({
+        id: legacyTxId,
+        layanan: 'tarik_tunai',
+        sourceAccountId: accKasKecil.id, // data lama kas
+        accountId: accKasBesar.id,
+        shiftId: null,
+        feeManualOverride: false,
+        nominal: 100000,
+        fee: 5000,
+        feePaidBy: 'cash',
+        paymentMethod: 'tunai',
+        paymentStatus: 'lunas',
+        status: 'ok',
+        date: now,
+        createdAt: now,
+        updatedAt: now,
+        userId: ownerUser.id,
+      });
+
+      const authStore = useAuthStore(pinia);
+      authStore.currentUser = ownerUser;
+
+      await router.push(`/transactions/${legacyTxId}`);
+      await router.isReady();
+
+      const wrapper = mount(TransactionDetailView, {
+        global: {
+          plugins: [pinia, router],
+          stubs: {
+            AppScaffold: { template: '<div><slot /></div>' },
+          },
+        },
+      });
+
+      // Buka dialog edit
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="btn-edit-transaction"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="btn-edit-transaction"]').trigger('click');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="edit-dialog"]').exists()).toBe(true);
+      });
+
+      // Pastikan field Diterima Di TIDAK ada
+      const editBox = wrapper.find('[data-testid="edit-dialog"]');
+      expect(editBox.exists()).toBe(true);
+      expect(editBox.text()).not.toContain('Diterima Di');
+
+      // Cek dropdown Rekening Terima Transfer tetap memuat kas lama agar nilai tersimpan tampil
+      const sourceSelect = wrapper.find('[data-testid="edit-select-source-account"]');
+      expect(sourceSelect.exists()).toBe(true);
+      const sourceOpts = sourceSelect.findAll('option').map((o) => o.text());
+      expect(sourceOpts.some((t) => t.includes('Kas Kecil'))).toBe(true); // nilai tersimpan
+      expect(sourceOpts.some((t) => t.includes('Bank BCA'))).toBe(true); // opsi bank baru
+
+      // Ubah sourceAccountId ke Bank BCA dan simpan
+      await sourceSelect.setValue(accBankBca.id);
+      await sourceSelect.trigger('change');
+      await flushPromises();
+
+      const saveBtn = wrapper.find('[data-testid="btn-submit-edit"]');
+      await saveBtn.trigger('click');
+
+      // Verifikasi tersimpan di DB dengan Bank BCA
+      await waitFor(async () => {
+        const updated = await db.transactions.get(legacyTxId);
+        expect(updated?.sourceAccountId).toBe(accBankBca.id);
+      });
+    });
+  });
+
+  describe('D.10: Tarik Tunai Hutang (T3 & T4)', () => {
+    it('saat hutang tarik tunai dibuat: kas berkurang -(nominal - fee), bank +0, hutang pelanggan = nominal', async () => {
+      const now = Date.now();
+      const customerId = 'cust-hutang-tarik-1';
+      await db.customers.add({
+        id: customerId,
+        name: 'Pak Doni',
+        phone: '081299998888',
+        balanceHutang: 0,
+        createdAt: now,
+      });
+
+      // Kas awal: Kas Kecil 1.000.000. Buat hutang tarik tunai 1.000.000 fee 7.000
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'tarik_tunai',
+          sourceAccountId: accBankBca.id,
+          paymentAccountId: accKasKecil.id,
+          nominal: 1000000,
+          fee: 7000,
+          feeManualOverride: false,
+          feePaidBy: 'cash',
+          paymentMethod: 'tunai',
+          paymentStatus: 'hutang',
+          customerId,
+          date: now,
+        },
+        { actorUserId: ownerUser.id, shiftId: 'shift-1' }
+      );
+
+      // Mutasi saat dibuat:
+      // T3: kas berkurang -(nominal - fee) = -(1.000.000 - 7.000) = -993.000
+      // T3: bank BCA bernilai +0 (belum masuk ledger karena ATM belum digesek/ditransfer)
+      const ledgers = await db.accountLedger.where('transactionId').equals(txId).toArray();
+      expect(ledgers).toHaveLength(1);
+      expect(ledgers[0].accountId).toBe(accKasKecil.id);
+      expect(ledgers[0].delta).toBe(-993000);
+
+      const bankLedgers = ledgers.filter((l) => l.accountId === accBankBca.id);
+      expect(bankLedgers).toHaveLength(0);
+
+      // T4: Hutang pelanggan tercatat tepat nominal (1.000.000), BUKAN 1.007.000
+      const custAfter = await db.customers.get(customerId);
+      expect(custAfter?.balanceHutang).toBe(1000000);
+
+      // Pelunasan penuh via receivableService.markPaidFull
+      await receivableService.markPaidFull(customerId, accBankBca.id, Date.now(), ownerUser.id);
+
+      // Setelah pelunasan:
+      // Uang masuk ke Bank BCA +1.000.000
+      // Kas Kecil tetap -993.000 (tidak ada duplikasi mutasi kas)
+      const pelunasanLedger = await db.accountLedger.where('accountId').equals(accBankBca.id).toArray();
+      const bankPelunasan = pelunasanLedger.find((l) => l.delta === 1000000);
+      expect(bankPelunasan).toBeDefined();
+
+      const allKasLedgers = await db.accountLedger.where('accountId').equals(accKasKecil.id).toArray();
+      const kasSum = allKasLedgers.reduce((acc, cur) => acc + cur.delta, 0);
+      expect(kasSum).toBe(-993000);
+
+      const custSettled = await db.customers.get(customerId);
+      expect(custSettled?.balanceHutang).toBe(0);
+    });
+
+    it('void hutang tarik tunai mengembalikan kas +(nominal - fee) dan mereset piutang pelanggan', async () => {
+      const now = Date.now();
+      const customerId = 'cust-hutang-tarik-void';
+      await db.customers.add({
+        id: customerId,
+        name: 'Pak Eko',
+        phone: '081277776666',
+        balanceHutang: 0,
+        createdAt: now,
+      });
+
+      const txId = await transactionService.addTransaction(
+        {
+          layanan: 'tarik_tunai',
+          sourceAccountId: accBankBca.id,
+          paymentAccountId: accKasKecil.id,
+          nominal: 1000000,
+          fee: 7000,
+          feeManualOverride: false,
+          feePaidBy: 'cash',
+          paymentMethod: 'tunai',
+          paymentStatus: 'hutang',
+          customerId,
+          date: now,
+        },
+        { actorUserId: ownerUser.id, shiftId: 'shift-1' }
+      );
+
+      // Batalkan (void) transaksi hutang tarik tunai
+      await transactionService.voidTransaction(txId, {
+        reason: 'Pelanggan membatalkan transaksi',
+        actorUserId: ownerUser.id,
+        pin: '111111',
+      });
+
+      // Kas dikembalikan +993.000
+      const allKas = await db.accountLedger.where('accountId').equals(accKasKecil.id).toArray();
+      const voidEntry = allKas.find((l) => l.delta === 993000);
+      expect(voidEntry).toBeDefined();
+
+      // Piutang pelanggan kembali 0
+      const custVoid = await db.customers.get(customerId);
+      expect(custVoid?.balanceHutang).toBe(0);
+    });
+  });
+
+  describe('D.11: Toggle Fee Bayar Admin (T2)', () => {
+    it('toggle Bayar Admin tersembunyi untuk tarik_tunai dan jasa_transfer, namun tampil untuk transfer', async () => {
+      const wrapper = mount(AddTransactionView, {
+        global: {
+          plugins: [pinia, router],
+          stubs: {
+            AppScaffold: { template: '<div><slot /></div>' },
+          },
+        },
+      });
+
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
+      });
+
+      // 1. Tarik Tunai: toggle Bayar Admin tersembunyi
+      const trigger = wrapper.find('[data-testid="service-dropdown-trigger"]');
+      await trigger.trigger('click');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-option-tarik_tunai"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="service-option-tarik_tunai"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.toggle-group').exists()).toBe(false);
+
+      // 2. Jasa Transfer: toggle Bayar Admin tersembunyi
+      await trigger.trigger('click');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-option-jasa_transfer"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="service-option-jasa_transfer"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.toggle-group').exists()).toBe(false);
+
+      // 3. Transfer: toggle Bayar Admin TAMPIL
+      await trigger.trigger('click');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-option-transfer"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="service-option-transfer"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.toggle-group').exists()).toBe(true);
+    });
+  });
+
+  describe('D.12: Filter Akun Sumber Transfer / Top-up / PPOB (T5)', () => {
+    it('opsi sumber transfer di form baru dan form edit tidak mengandung akun kas', async () => {
+      const wrapper = mount(AddTransactionView, {
+        global: {
+          plugins: [pinia, router],
+          stubs: {
+            AppScaffold: { template: '<div><slot /></div>' },
+          },
+        },
+      });
+
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
+      });
+
+      // Pilih Transfer
+      const trigger = wrapper.find('[data-testid="service-dropdown-trigger"]');
+      await trigger.trigger('click');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-option-transfer"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="service-option-transfer"]').trigger('click');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="select-source-account"]').exists()).toBe(true);
+      });
+
+      const sourceSelect = wrapper.find('[data-testid="select-source-account"]');
+      expect(sourceSelect.exists()).toBe(true);
+      const opts = sourceSelect.findAll('option').map((o) => o.text());
+      expect(opts.some((t) => t.includes('Bank BCA'))).toBe(true);
+      expect(opts.some((t) => t.includes('Bank Mandiri'))).toBe(true);
+      expect(opts.some((t) => t.includes('DANA'))).toBe(true);
+      expect(opts.some((t) => t.includes('Kas Kecil'))).toBe(false);
+      expect(opts.some((t) => t.includes('Kas Besar'))).toBe(false);
+    });
+
+    it('service menolak sumber kas untuk transfer', async () => {
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'transfer',
+            sourceAccountId: accKasKecil.id,
+            paymentAccountId: accKasBesar.id,
+            nominal: 50000,
+            fee: 5000,
+            feeManualOverride: false,
+            feePaidBy: 'cash',
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            date: Date.now(),
+          },
+          { actorUserId: ownerUser.id, shiftId: 'shift-1' }
+        )
+      ).rejects.toThrow('Sumber dana tidak boleh Akun Kas.');
+    });
+  });
+
+  describe('D.13: Validasi Saldo (T6)', () => {
+    it('tarik_tunai lunas ditolak jika saldo akun kas kurang dari (nominal - fee)', async () => {
+      // Saldo Kas Kecil saat ini 1.000.000. Coba tarik tunai 2.000.000 fee 10.000 (diserahkan: 1.990.000)
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'tarik_tunai',
+            sourceAccountId: accBankBca.id,
+            paymentAccountId: accKasKecil.id,
+            nominal: 2000000,
+            fee: 10000,
+            feeManualOverride: false,
+            feePaidBy: 'cash',
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            date: Date.now(),
+          },
+          { actorUserId: ownerUser.id, shiftId: 'shift-1' }
+        )
+      ).rejects.toThrow('Saldo akun sumber tidak mencukupi.');
+    });
+
+    it('transfer ditolak jika saldo rekening sumber kurang dari nominal yang dibutuhkan', async () => {
+      // Saldo Bank Mandiri 3.000.000. Coba transfer 5.000.000
+      await expect(
+        transactionService.addTransaction(
+          {
+            layanan: 'transfer',
+            sourceAccountId: accBankMandiri.id,
+            paymentAccountId: accKasKecil.id,
+            nominal: 5000000,
+            fee: 6500,
+            feeManualOverride: false,
+            feePaidBy: 'cash',
+            paymentMethod: 'tunai',
+            paymentStatus: 'lunas',
+            date: Date.now(),
+          },
+          { actorUserId: ownerUser.id, shiftId: 'shift-1' }
+        )
+      ).rejects.toThrow('Saldo akun sumber tidak mencukupi.');
     });
   });
 });

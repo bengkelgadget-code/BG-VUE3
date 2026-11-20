@@ -221,8 +221,7 @@ describe('Audit b32 Features: Brand/Operator dipisah per kategori (provider vs a
       });
       await flushPromises();
 
-      const input = wrapper.find('[data-testid="brand-combobox-input"]');
-      await input.trigger('focus');
+      await wrapper.find('[data-testid="brand-combobox-trigger"]').trigger('click');
       await flushPromises();
 
       let dropdown = wrapper.find('[data-testid="brand-dropdown-menu"]');
@@ -233,7 +232,7 @@ describe('Audit b32 Features: Brand/Operator dipisah per kategori (provider vs a
       const tselOption = wrapper.findAll('.brand-item').find((w) => w.text().includes('Telkomsel'));
       await tselOption?.trigger('click');
       await flushPromises();
-      expect((input.element as HTMLInputElement).value).toBe('Telkomsel');
+      expect(wrapper.find('[data-testid="brand-combobox-trigger"]').text()).toContain('Telkomsel');
 
       // Ubah kategori ke aksesoris
       const categorySelect = wrapper.find('#product-category');
@@ -241,10 +240,10 @@ describe('Audit b32 Features: Brand/Operator dipisah per kategori (provider vs a
       await flushPromises();
 
       // Operator harus di-reset karena Telkomsel bukan brand aksesoris
-      expect((input.element as HTMLInputElement).value).toBe('');
+      expect(wrapper.find('[data-testid="brand-combobox-trigger"]').text()).not.toContain('Telkomsel');
 
       // Buka dropdown lagi: sekarang yang muncul Robot
-      await input.trigger('focus');
+      await wrapper.find('[data-testid="brand-combobox-trigger"]').trigger('click');
       await flushPromises();
       dropdown = wrapper.find('[data-testid="brand-dropdown-menu"]');
       expect(dropdown.text()).toContain('Robot');
@@ -261,8 +260,7 @@ describe('Audit b32 Features: Brand/Operator dipisah per kategori (provider vs a
       await wrapper.find('#product-category').setValue('game');
       await flushPromises();
 
-      const input = wrapper.find('[data-testid="brand-combobox-input"]');
-      await input.trigger('focus');
+      await wrapper.find('[data-testid="brand-combobox-trigger"]').trigger('click');
       await flushPromises();
 
       const hint = wrapper.find('.brand-empty-hint');
@@ -277,6 +275,9 @@ describe('Audit b32 Features: Brand/Operator dipisah per kategori (provider vs a
       await flushPromises();
 
       await wrapper.find('#product-category').setValue('aksesoris');
+      await flushPromises();
+
+      await wrapper.find('[data-testid="brand-combobox-trigger"]').trigger('click');
       await flushPromises();
 
       const input = wrapper.find('[data-testid="brand-combobox-input"]');

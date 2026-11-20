@@ -153,30 +153,30 @@ describe('Audit b30 Features: Aturan Akun Tarik Tunai & Form Styling', () => {
       await wrapper.find('[data-testid="service-option-tarik_tunai"]').trigger('click');
       await flushPromises();
 
-      // Cari select rekening konter penerima transfer
-      const selectSource = wrapper.find('.cascading-fields select.form-select');
-      expect(selectSource.exists()).toBe(true);
+      // Cari select sumber dana (kas) untuk tarik tunai (b33)
+      const selectPayment = wrapper.find('[data-testid="select-payment-account"]');
+      expect(selectPayment.exists()).toBe(true);
 
-      const options = selectSource.findAll('option');
+      const options = selectPayment.findAll('option');
       const optionTexts = options.map((o) => o.text());
       const optionValues = options.map((o) => (o.element as HTMLOptionElement).value);
 
-      // Placeholder khusus tarik tunai
-      expect(optionTexts[0]).toContain('-- Pilih Kas / Rekening Bank --');
+      // Placeholder khusus tarik tunai (Sumber Dana: Kas)
+      expect(optionTexts[0]).toContain('-- Pilih Kas (Kas Kecil / Kas Besar) --');
 
-      // Memuat kas dan bank
+      // Memuat kas, tidak memuat bank atau ewallet
       expect(optionValues).toContain(kasKecil.id);
       expect(optionValues).toContain(kasBesar.id);
-      expect(optionValues).toContain(bankBca.id);
-
-      // TIDAK memuat ewallet
+      expect(optionValues).not.toContain(bankBca.id);
       expect(optionValues).not.toContain(danaEwallet.id);
-      expect(optionValues).not.toContain(gopayEwallet.id);
 
-      // Preselected value tidak boleh ewallet
-      const selectedVal = (selectSource.element as HTMLSelectElement).value;
-      expect(selectedVal).not.toBe(danaEwallet.id);
-      expect(selectedVal).not.toBe(gopayEwallet.id);
+      // Cari select rekening terima transfer (bank) untuk tarik tunai (b33)
+      const selectBank = wrapper.find('[data-testid="select-source-account"]');
+      expect(selectBank.exists()).toBe(true);
+      const bankOptions = selectBank.findAll('option').map((o) => (o.element as HTMLOptionElement).value);
+      expect(bankOptions).toContain(bankBca.id);
+      expect(bankOptions).not.toContain(kasKecil.id);
+      expect(bankOptions).not.toContain(danaEwallet.id);
 
       wrapper.unmount();
       await flushPromises();
@@ -223,23 +223,23 @@ describe('Audit b30 Features: Aturan Akun Tarik Tunai & Form Styling', () => {
         expect(wrapper.find('[data-testid="edit-dialog"]').exists()).toBe(true);
       });
 
-      // 1. Sumber Dana: Kas + Bank (tanpa ewallet)
+      // 1. Rekening Terima: Bank saja (b33)
       const sourceSelect = wrapper.find('[data-testid="edit-select-source-account"]');
       expect(sourceSelect.exists()).toBe(true);
       const sourceOptions = sourceSelect.findAll('option').map((o) => (o.element as HTMLOptionElement).value);
-      expect(sourceOptions).toContain(kasKecil.id);
-      expect(sourceOptions).toContain(kasBesar.id);
       expect(sourceOptions).toContain(bankBca.id);
+      expect(sourceOptions).not.toContain(kasKecil.id);
+      expect(sourceOptions).not.toContain(kasBesar.id);
       expect(sourceOptions).not.toContain(danaEwallet.id);
       expect(sourceOptions).not.toContain(gopayEwallet.id);
 
-      // 2. Diterima Di: Bank + Kas (tanpa ewallet)
+      // 2. Sumber Dana Kasir: Kas saja (b33)
       const paymentSelect = wrapper.find('[data-testid="edit-select-payment-account"]');
       expect(paymentSelect.exists()).toBe(true);
       const paymentOptions = paymentSelect.findAll('option').map((o) => (o.element as HTMLOptionElement).value);
-      expect(paymentOptions).toContain(bankBca.id);
       expect(paymentOptions).toContain(kasKecil.id);
       expect(paymentOptions).toContain(kasBesar.id);
+      expect(paymentOptions).not.toContain(bankBca.id);
       expect(paymentOptions).not.toContain(danaEwallet.id);
       expect(paymentOptions).not.toContain(gopayEwallet.id);
 
@@ -263,7 +263,7 @@ describe('Audit b30 Features: Aturan Akun Tarik Tunai & Form Styling', () => {
           },
           { actorUserId: kasirUser.id, shiftId: 'shift-test-1' }
         )
-      ).rejects.toThrow('Sumber dana Tarik Tunai hanya Kas atau Rekening Bank.');
+      ).rejects.toThrow('Rekening Terima Tarik Tunai hanya Rekening Bank.');
     });
 
     it('A.4.4 editTransaction tarik tunai dengan payment ewallet DITOLAK dengan pesan validasi', async () => {
@@ -282,7 +282,7 @@ describe('Audit b30 Features: Aturan Akun Tarik Tunai & Form Styling', () => {
         { actorUserId: kasirUser.id, shiftId: 'shift-test-1' }
       );
 
-      // Coba ubah Diterima Di menjadi ewallet -> ditolak
+      // Coba ubah Sumber Dana kasir menjadi ewallet -> ditolak
       await expect(
         transactionService.editTransaction(
           txId,
@@ -291,9 +291,9 @@ describe('Audit b30 Features: Aturan Akun Tarik Tunai & Form Styling', () => {
           },
           { actorUserId: ownerUser.id }
         )
-      ).rejects.toThrow('Diterima Di Tarik Tunai hanya Kas atau Rekening Bank.');
+      ).rejects.toThrow('Sumber Dana Tarik Tunai hanya Kas Kecil atau Kas Besar.');
 
-      // Coba ubah Sumber Dana menjadi ewallet -> ditolak
+      // Coba ubah Rekening Terima menjadi ewallet -> ditolak
       await expect(
         transactionService.editTransaction(
           txId,
@@ -302,7 +302,7 @@ describe('Audit b30 Features: Aturan Akun Tarik Tunai & Form Styling', () => {
           },
           { actorUserId: ownerUser.id }
         )
-      ).rejects.toThrow('Sumber dana Tarik Tunai hanya Kas atau Rekening Bank.');
+      ).rejects.toThrow('Rekening Terima Tarik Tunai hanya Rekening Bank.');
     });
 
     it('A.4.5 Tarik tunai source = bank + payment = kas tetap menghasilkan delta yang benar', async () => {

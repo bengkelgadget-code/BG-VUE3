@@ -27,74 +27,22 @@
         <div class="form-section">
           <label class="section-label" for="service-combobox-trigger">Pilih Jenis Layanan</label>
           <div ref="comboboxContainerRef" class="service-combobox-container">
-            <!-- Trigger Button -->
-            <button
+            <SearchableSelect
               id="service-combobox-trigger"
               ref="layananTriggerRef"
-              type="button"
-              class="service-combobox-trigger"
-              :class="{ open: isDropdownOpen }"
-              aria-haspopup="listbox"
-              :aria-expanded="isDropdownOpen"
-              data-testid="service-dropdown-trigger"
-              @click="toggleDropdown"
-              @keydown.down.prevent="openDropdown"
-              @keydown.enter.prevent="toggleDropdown"
-            >
-              <div class="trigger-selected">
-                <component :is="selectedServiceObj?.icon" class="s-icon" />
-                <span class="s-label">{{ selectedServiceObj?.label || 'Pilih Layanan' }}</span>
-              </div>
-              <ChevronDown class="chevron-icon" :class="{ rotated: isDropdownOpen }" />
-            </button>
-
-            <!-- Dropdown Menu -->
-            <div
-              v-if="isDropdownOpen"
-              class="service-dropdown-menu"
-              role="listbox"
-              data-testid="service-dropdown-menu"
-            >
-              <div class="dropdown-search-wrapper">
-                <Search class="search-icon" />
-                <input
-                  ref="searchInputRef"
-                  v-model="searchQuery"
-                  type="text"
-                  class="dropdown-search-input"
-                  placeholder="Cari layanan..."
-                  data-testid="input-cari-layanan"
-                  @keydown.down.prevent="moveHighlight(1)"
-                  @keydown.up.prevent="moveHighlight(-1)"
-                  @keydown.enter.prevent="selectHighlighted"
-                  @keydown.esc.prevent="closeDropdown"
-                />
-              </div>
-
-              <ul class="service-options-list">
-                <li
-                  v-for="(s, index) in filteredServices"
-                  :key="s.code"
-                  role="option"
-                  :aria-selected="layanan === s.code"
-                  class="service-option-item"
-                  :class="{
-                    active: layanan === s.code,
-                    highlighted: index === highlightedIndex,
-                  }"
-                  :data-testid="`service-option-${s.code}`"
-                  @click="onSelectOption(s.code)"
-                  @mouseenter="highlightedIndex = index"
-                >
-                  <component :is="s.icon" class="s-icon-sm" />
-                  <span class="s-option-label">{{ s.label }}</span>
-                  <Check v-if="layanan === s.code" class="check-icon" />
-                </li>
-                <li v-if="filteredServices.length === 0" class="no-options-item">
-                  Tidak ada layanan yang cocok
-                </li>
-              </ul>
-            </div>
+              v-model="layanan"
+              :options="serviceSelectOptions"
+              placeholder="Pilih Layanan"
+              search-placeholder="Cari layanan (transfer, pulsa, token, game, acc...)"
+              data-testid="service-dropdown"
+              trigger-test-id="service-dropdown-trigger"
+              search-test-id="input-cari-layanan"
+              menu-test-id="service-dropdown-menu"
+              option-test-id-prefix="service-option-"
+              item-class="service-option-item"
+              empty-text="Tidak ada layanan yang cocok"
+              @change="onSelectOption"
+            />
           </div>
         </div>
 
@@ -115,29 +63,49 @@
             </div>
           </div>
 
-          <!-- Layanan Transfer / Tarik Tunai / Top Up / PPOB -->
-          <div v-if="['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(layanan)" class="cascading-fields">
+          <!-- Kasus Khusus Tarik Tunai (A.3, T1) -->
+          <div v-else-if="layanan === 'tarik_tunai'" class="cascading-fields">
             <div class="form-group">
-              <label class="form-label">
-                {{ layanan === 'tarik_tunai' ? 'Rekening Konter Penerima Transfer' : 'Sumber Dana Konter' }}
-              </label>
-              <select
+              <label class="form-label">Sumber Dana</label>
+              <SearchableSelect
+                ref="paymentAccountRef"
+                v-model="paymentAccountId"
+                :options="tarikTunaiKasOptions"
+                placeholder="-- Pilih Kas (Kas Kecil / Kas Besar) --"
+                search-placeholder="Cari kas..."
+                data-testid="select-payment-account"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Rekening Terima Transfer</label>
+              <SearchableSelect
                 ref="sourceAccountRef"
                 v-model="sourceAccountId"
-                class="form-select"
+                :options="tarikTunaiBankOptions"
+                placeholder="-- Pilih Rekening Bank Penerima --"
+                search-placeholder="Cari rekening bank..."
+                data-testid="select-source-account"
+                required
+              />
+            </div>
+          </div>
+
+          <!-- Layanan Transfer / Top Up / PPOB (T5: tanpa kas) -->
+          <div v-else-if="['transfer', 'topup_ewallet', 'ppob'].includes(layanan)" class="cascading-fields">
+            <div class="form-group">
+              <label class="form-label">Sumber Dana Konter</label>
+              <SearchableSelect
+                ref="sourceAccountRef"
+                v-model="sourceAccountId"
+                :options="bankAndEwalletOptions"
+                placeholder="-- Pilih Akun Bank / E-Wallet --"
+                search-placeholder="Cari bank / e-wallet..."
+                data-testid="select-source-account"
                 required
                 @change="onSourceAccountChanged"
-              >
-                <option v-if="layanan === 'tarik_tunai'" disabled value="">-- Pilih Kas / Rekening Bank --</option>
-                <option v-else disabled value="">-- Pilih Akun Bank / E-Wallet --</option>
-                <option
-                  v-for="acc in (layanan === 'tarik_tunai' ? availableTarikTunaiSourceAccounts : availableBankAccounts)"
-                  :key="acc.id"
-                  :value="acc.id"
-                >
-                  {{ acc.name }} (Saldo: {{ formatRupiah(accountBalances[acc.id] || acc.initialBalance) }})
-                </option>
-              </select>
+              />
             </div>
 
             <div v-if="layanan === 'transfer'" class="form-group">
@@ -181,25 +149,17 @@
           <div v-else-if="currentLayananDef?.group === 'penjualan' && !currentLayananDef.needsSourceAccount" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Pilih Barang dari Master Produk</label>
-              <input
-                v-model="productFilterQuery"
-                type="text"
-                class="form-input mb-2"
-                placeholder="Cari produk..."
-                data-testid="filter-physical-product"
-              />
-              <select
+              <SearchableSelect
                 ref="productSelectRef"
                 v-model="selectedProductId"
-                class="form-select"
+                :options="physicalProductOptions"
+                placeholder="-- Pilih Produk --"
+                search-placeholder="Cari produk fisik..."
+                data-testid="select-physical-product"
+                preserve-selected
                 required
                 @change="onProductSelected"
-              >
-                <option disabled value="">-- Pilih Produk --</option>
-                <option v-for="p in displayedPhysicalProducts" :key="p.id" :value="p.id">
-                  {{ p.name }} (Harga: {{ formatRupiah(p.hargaJual) }} | Stok: {{ p.stock ?? 0 }})
-                </option>
-              </select>
+              />
             </div>
           </div>
 
@@ -207,18 +167,15 @@
           <div v-else-if="currentLayananDef?.group === 'penjualan' && currentLayananDef.needsSourceAccount" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Akun Server Pulsa Catatan</label>
-              <select
+              <SearchableSelect
                 ref="sourceAccountRef"
                 v-model="sourceAccountId"
-                class="form-select"
+                :options="serverAccountOptions"
+                placeholder="-- Pilih Server Pulsa --"
+                search-placeholder="Cari server pulsa..."
                 required
                 @change="onSourceAccountChanged"
-              >
-                <option disabled value="">-- Pilih Server Pulsa --</option>
-                <option v-for="acc in serverAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }} (Saldo catatan: {{ formatRupiah(accountBalances[acc.id] || acc.initialBalance) }})
-                </option>
-              </select>
+              />
             </div>
 
             <div class="form-group">
@@ -239,26 +196,18 @@
 
             <div class="form-group">
               <label class="form-label">Pilih Produk Digital dari Master</label>
-              <input
-                v-model="productFilterQuery"
-                type="text"
-                class="form-input mb-2"
-                placeholder="Cari produk..."
-                data-testid="filter-digital-product"
-              />
-              <select
+              <SearchableSelect
                 ref="productSelectRef"
                 v-model="selectedProductId"
-                class="form-select"
+                :options="digitalProductOptions"
+                placeholder="-- Pilih Produk Master --"
+                search-placeholder="Cari produk digital..."
+                data-testid="select-digital-product"
+                preserve-selected
                 required
                 @change="onProductSelected"
-              >
-                <option disabled value="">-- Pilih Produk Master --</option>
-                <option v-for="p in displayedDigitalProducts" :key="p.id" :value="p.id">
-                  {{ p.label }}
-                </option>
-              </select>
-              <span v-if="displayedDigitalProducts.length === 0" class="form-hint-warning">
+              />
+              <span v-if="availableDigitalProducts.length === 0" class="form-hint-warning">
                 Belum ada produk digital. Minta Owner/Admin mengisi Master Produk atau menyinkronkan katalog dari Master Produk.
               </span>
             </div>
@@ -268,18 +217,15 @@
           <div v-else-if="layanan === 'operasional'" class="cascading-fields">
             <div class="form-group">
               <label class="form-label">Sumber Dana Operasional</label>
-              <select
+              <SearchableSelect
                 ref="sourceAccountRef"
                 v-model="sourceAccountId"
-                class="form-select"
+                :options="operasionalSourceOptions"
+                placeholder="-- Pilih Akun Pengeluaran --"
+                search-placeholder="Cari akun..."
                 required
                 @change="onSourceAccountChanged"
-              >
-                <option disabled value="">-- Pilih Akun Pengeluaran --</option>
-                <option v-for="acc in activeAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }} (Saldo: {{ formatRupiah(accountBalances[acc.id] || acc.initialBalance) }})
-                </option>
-              </select>
+              />
             </div>
             <div class="form-group">
               <label class="form-label">Keterangan Pengeluaran</label>
@@ -323,19 +269,16 @@
           <!-- Dropdown Diterima Di (b31) -->
           <div v-if="hasPaymentAccount" class="form-group mt-3" data-testid="payment-account-group">
             <label class="form-label" for="payment-account-select">Diterima Di</label>
-            <select
+            <SearchableSelect
               id="payment-account-select"
               ref="paymentAccountRef"
               v-model="paymentAccountId"
-              class="form-select"
+              :options="paymentAccountSelectOptions"
+              placeholder="-- Pilih Akun Penerima --"
+              search-placeholder="Cari akun..."
               data-testid="select-payment-account"
               required
-            >
-              <option disabled value="">-- Pilih Akun Penerima --</option>
-              <option v-for="acc in availablePaymentAccounts" :key="acc.id" :value="acc.id">
-                {{ getPaymentOptionLabel(acc) }}
-              </option>
-            </select>
+            />
           </div>
         </div>
 
@@ -369,18 +312,15 @@
           <div v-if="paymentStatus === 'hutang' && layanan !== 'jasa_transfer'" class="debt-box">
             <label class="form-label text-warning">Pilih Pelanggan (Wajib)</label>
             <div class="customer-picker">
-              <select
+              <SearchableSelect
                 ref="customerSelectRef"
                 v-model="selectedCustomerId"
-                class="form-select"
+                :options="customerOptions"
+                placeholder="-- Pilih Pelanggan Terdaftar --"
+                search-placeholder="Cari pelanggan..."
                 required
                 @change="onCustomerChanged"
-              >
-                <option disabled value="">-- Pilih Pelanggan Terdaftar --</option>
-                <option v-for="c in customerList" :key="c.id" :value="c.id">
-                  {{ c.name }} {{ c.phone ? `(${c.phone})` : '' }}
-                </option>
-              </select>
+              />
             </div>
             <span class="form-hint">Pelanggan baru dapat ditambahkan di menu Master Pelanggan.</span>
           </div>
@@ -388,16 +328,13 @@
           <!-- Pelanggan Opsional untuk Jasa Transfer -->
           <div v-if="layanan === 'jasa_transfer'" class="form-group">
             <label class="form-label">Nama Pelanggan (Opsional)</label>
-            <select
+            <SearchableSelect
               v-model="selectedCustomerId"
-              class="form-select"
+              :options="jasaTransferCustomerOptions"
+              placeholder="-- Tanpa Pelanggan / Pelanggan Umum --"
+              search-placeholder="Cari pelanggan..."
               data-testid="select-customer-jasa-transfer"
-            >
-              <option value="">-- Tanpa Pelanggan / Pelanggan Umum --</option>
-              <option v-for="c in customerList" :key="c.id" :value="c.id">
-                {{ c.name }} {{ c.phone ? `(${c.phone})` : '' }}
-              </option>
-            </select>
+            />
           </div>
 
           <div class="form-group mt-2">
@@ -479,14 +416,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import {
-  AlertCircle,
-  ChevronDown,
-  Search,
-  Check,
-} from 'lucide-vue-next';
+import { AlertCircle } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import MoneyInput from '../components/MoneyInput.vue';
 import FeeBadge from '../components/FeeBadge.vue';
@@ -500,6 +432,7 @@ import type { Account, Product, Customer, AdminFeeRule, ProductCatalogEntry, Pro
 import { AppError } from '../core/errors';
 import { staffLayanan, getLayananDef } from '../core/layanan';
 import { sortProductsForLayanan } from '../utils/productSort';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -589,12 +522,8 @@ const catalogList = ref<ProductCatalogEntry[]>([]);
 const customerList = ref<Customer[]>([]);
 
 // Dropdown Combobox State
-const isDropdownOpen = ref(false);
-const searchQuery = ref('');
-const highlightedIndex = ref(0);
 const comboboxContainerRef = ref<HTMLElement | null>(null);
 const layananTriggerRef = ref<HTMLButtonElement | null>(null);
-const searchInputRef = ref<HTMLInputElement | null>(null);
 
 // Element Refs for Auto-Focus
 const sourceAccountRef = ref<HTMLSelectElement | null>(null);
@@ -609,22 +538,43 @@ const submitBtnRef = ref<HTMLButtonElement | null>(null);
 
 const primaryServices = staffLayanan();
 
-const selectedServiceObj = computed(() => {
-  return primaryServices.find((s) => s.code === layanan.value) || currentLayananDef.value || primaryServices[0];
-});
+const serviceSelectOptions = computed(() =>
+  primaryServices.map((s) => ({
+    value: s.code,
+    label: s.label,
+    hint: s.group === 'penjualan' ? 'Penjualan' : (s.group === 'transfer' ? 'Transfer & Keuangan' : 'Lainnya'),
+    icon: s.icon,
+    keywords: s.keywords,
+  }))
+);
 
-const filteredServices = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase();
-  if (!q) return primaryServices;
-  return primaryServices.filter((s) => {
-    if (s.label.toLowerCase().includes(q)) return true;
-    if (s.code.toLowerCase().includes(q)) return true;
-    return s.keywords.some((k) => k.toLowerCase().includes(q));
-  });
-});
+// T5: Bank & E-Wallet saja, tanpa kas untuk transfer/topup/ppob
+const bankAndEwalletOptions = computed(() =>
+  activeAccounts.value
+    .filter((a) => a.type === 'bank' || a.type === 'ewallet')
+    .map((a) => ({
+      value: a.id,
+      label: `${a.name} (Saldo: ${formatRupiah(accountBalances.value[a.id] || a.initialBalance)})`,
+    }))
+);
 
-const availableBankAccounts = computed(() =>
-  activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'ewallet' || a.type === 'kas')
+// A.3, T1: Kasus khusus Tarik Tunai
+const tarikTunaiKasOptions = computed(() =>
+  activeAccounts.value
+    .filter((a) => a.type === 'kas')
+    .map((a) => ({
+      value: a.id,
+      label: `${a.name} (Saldo: ${formatRupiah(accountBalances.value[a.id] || a.initialBalance)})`,
+    }))
+);
+
+const tarikTunaiBankOptions = computed(() =>
+  activeAccounts.value
+    .filter((a) => a.type === 'bank')
+    .map((a) => ({
+      value: a.id,
+      label: `${a.name} (Saldo: ${formatRupiah(accountBalances.value[a.id] || a.initialBalance)})`,
+    }))
 );
 
 const availableTarikTunaiSourceAccounts = computed(() =>
@@ -699,30 +649,55 @@ const availableDigitalProducts = computed<DigitalProductDisplay[]>(() => {
 // Filter teks di dropdown produk (b33)
 const productFilterQuery = ref('');
 
-const displayedPhysicalProducts = computed(() => {
-  const q = productFilterQuery.value.trim().toLowerCase();
-  const all = availablePhysicalProducts.value;
-  if (!q) return all;
-  return all.filter((p) => {
-    if (p.id === selectedProductId.value) return true; // produk terpilih selalu tampil
-    const matchName = p.name.toLowerCase().includes(q);
-    const matchOp = (p.operator || '').toLowerCase().includes(q);
-    return matchName || matchOp;
-  });
-});
+const physicalProductOptions = computed(() =>
+  availablePhysicalProducts.value.map((p) => ({
+    value: p.id,
+    label: `${p.name} (Harga: ${formatRupiah(p.hargaJual)} | Stok: ${p.stock ?? 0})`,
+  }))
+);
 
-const displayedDigitalProducts = computed(() => {
-  const q = productFilterQuery.value.trim().toLowerCase();
-  const all = availableDigitalProducts.value;
-  if (!q) return all;
-  return all.filter((p) => {
-    if (p.id === selectedProductId.value) return true; // produk terpilih selalu tampil
-    const matchName = p.name.toLowerCase().includes(q);
-    const matchOp = (p.operator || '').toLowerCase().includes(q);
-    const matchLabel = p.label.toLowerCase().includes(q);
-    return matchName || matchOp || matchLabel;
-  });
-});
+const serverAccountOptions = computed(() =>
+  serverAccounts.value.map((acc) => ({
+    value: acc.id,
+    label: `${acc.name} (Saldo catatan: ${formatRupiah(accountBalances.value[acc.id] || acc.initialBalance)})`,
+  }))
+);
+
+const digitalProductOptions = computed(() =>
+  availableDigitalProducts.value.map((p) => ({
+    value: p.id,
+    label: p.label,
+  }))
+);
+
+const operasionalSourceOptions = computed(() =>
+  activeAccounts.value.map((acc) => ({
+    value: acc.id,
+    label: `${acc.name} (Saldo: ${formatRupiah(accountBalances.value[acc.id] || acc.initialBalance)})`,
+  }))
+);
+
+const paymentAccountSelectOptions = computed(() =>
+  availablePaymentAccounts.value.map((acc) => ({
+    value: acc.id,
+    label: getPaymentOptionLabel(acc),
+  }))
+);
+
+const customerOptions = computed(() =>
+  customerList.value.map((c) => ({
+    value: c.id,
+    label: `${c.name} ${c.phone ? `(${c.phone})` : ''}`,
+  }))
+);
+
+const jasaTransferCustomerOptions = computed(() => [
+  { value: '', label: '-- Tanpa Pelanggan / Pelanggan Umum --' },
+  ...customerList.value.map((c) => ({
+    value: c.id,
+    label: `${c.name} ${c.phone ? `(${c.phone})` : ''}`,
+  })),
+]);
 
 // Footer Simpan Transaksi baru muncul setelah nominal diisi atau produk berharga dipilih (b33)
 const showSaveBar = computed(() => {
@@ -737,8 +712,6 @@ const showSaveBar = computed(() => {
 });
 
 onMounted(async () => {
-  document.addEventListener('pointerdown', handleClickOutside);
-
   // Ambil jenis dari query parameter jika ada (misal dari Aksi Cepat Home), hanya yang diizinkan untuk staf
   const qType = route.query['type'];
   if (typeof qType === 'string' && qType) {
@@ -785,60 +758,10 @@ onMounted(async () => {
   }
 });
 
-onUnmounted(() => {
-  document.removeEventListener('pointerdown', handleClickOutside);
-});
-
-function toggleDropdown() {
-  if (isDropdownOpen.value) {
-    closeDropdown();
-  } else {
-    openDropdown();
-  }
-}
-
-function openDropdown() {
-  isDropdownOpen.value = true;
-  searchQuery.value = '';
-  const idx = filteredServices.value.findIndex((s) => s.code === layanan.value);
-  highlightedIndex.value = idx >= 0 ? idx : 0;
-  nextTick(() => {
-    searchInputRef.value?.focus();
-  });
-}
-
-function closeDropdown() {
-  isDropdownOpen.value = false;
-  searchQuery.value = '';
-}
-
-function moveHighlight(step: number) {
-  if (filteredServices.value.length === 0) return;
-  const len = filteredServices.value.length;
-  highlightedIndex.value = (highlightedIndex.value + step + len) % len;
-}
-
-function selectHighlighted() {
-  if (filteredServices.value.length === 0) return;
-  const target = filteredServices.value[highlightedIndex.value];
-  if (target) {
-    onSelectOption(target.code);
-  }
-}
-
-function onSelectOption(code: string) {
-  selectService(code);
-  closeDropdown();
-  focusNextFieldAfterService(code);
-}
-
-function handleClickOutside(event: MouseEvent) {
-  if (
-    comboboxContainerRef.value &&
-    !comboboxContainerRef.value.contains(event.target as Node)
-  ) {
-    closeDropdown();
-  }
+function onSelectOption(code: string | number) {
+  const strCode = String(code);
+  selectService(strCode);
+  focusNextFieldAfterService(strCode);
 }
 
 interface FocusableElement {
@@ -871,7 +794,9 @@ function focusNextFieldAfterService(code: string) {
     const def = getLayananDef(code);
     if (code === 'jasa_transfer') {
       focusElement(referenceNoRef.value);
-    } else if (['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(code)) {
+    } else if (code === 'tarik_tunai') {
+      focusElement(paymentAccountRef.value);
+    } else if (['transfer', 'topup_ewallet', 'ppob'].includes(code)) {
       focusElement(sourceAccountRef.value);
     } else if (def?.group === 'penjualan' && !def.needsSourceAccount) {
       focusElement(productSelectRef.value);
@@ -927,10 +852,15 @@ function selectService(code: string) {
     if (defaultServer) sourceAccountId.value = defaultServer.id;
   }
   if (code === 'tarik_tunai') {
+    const defaultKas = activeAccounts.value.find((a) => a.type === 'kas');
+    paymentAccountId.value = defaultKas ? defaultKas.id : '';
+    const defaultBank = activeAccounts.value.find((a) => a.type === 'bank');
+    sourceAccountId.value = defaultBank ? defaultBank.id : '';
+  } else if (['transfer', 'topup_ewallet', 'ppob'].includes(code)) {
     const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
-    if (!curAcc || curAcc.type === 'ewallet') {
-      const fallback = availableTarikTunaiSourceAccounts.value[0];
-      sourceAccountId.value = fallback ? fallback.id : '';
+    if (!curAcc || curAcc.type === 'kas') {
+      const fallback = bankAndEwalletOptions.value[0];
+      sourceAccountId.value = fallback ? String(fallback.value) : '';
     }
   }
   const validIds = availablePaymentAccounts.value.map((a) => a.id);
@@ -951,20 +881,23 @@ watch(layanan, (newCode) => {
     return;
   }
   if (newCode === 'tarik_tunai') {
+    const defaultKas = activeAccounts.value.find((a) => a.type === 'kas');
+    paymentAccountId.value = defaultKas ? defaultKas.id : '';
+    const defaultBank = activeAccounts.value.find((a) => a.type === 'bank');
+    sourceAccountId.value = defaultBank ? defaultBank.id : '';
+  } else if (['transfer', 'topup_ewallet', 'ppob'].includes(newCode)) {
     const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
-    if (!curAcc || curAcc.type === 'ewallet') {
-      const fallback = availableTarikTunaiSourceAccounts.value[0];
-      sourceAccountId.value = fallback ? fallback.id : '';
+    if (!curAcc || curAcc.type === 'kas') {
+      const fallback = bankAndEwalletOptions.value[0];
+      sourceAccountId.value = fallback ? String(fallback.value) : '';
     }
   }
   if (def?.group === 'penjualan' && def.needsSourceAccount) {
     const defaultServer = activeAccounts.value.find((a) => a.type === 'server_pulsa');
     if (defaultServer) sourceAccountId.value = defaultServer.id;
   }
-  const validIds = availablePaymentAccounts.value.map((a) => a.id);
-  if (!validIds.includes(paymentAccountId.value)) {
-    initDefaultPaymentAccount();
-  }
+  initDefaultPaymentAccount();
+  recalculateFee();
 });
 
 async function onNominalChanged(val: number) {
@@ -1088,7 +1021,7 @@ async function handleSubmit() {
       {
         layanan: layanan.value,
         productId: selectedProductId.value || undefined,
-        paymentAccountId: hasPaymentAccount.value ? (paymentAccountId.value || undefined) : undefined,
+        paymentAccountId: (layanan.value === 'tarik_tunai' || hasPaymentAccount.value) ? (paymentAccountId.value || undefined) : undefined,
         sourceAccountId: (layanan.value === 'jasa_transfer') ? undefined : (sourceAccountId.value || undefined),
         destAccountId: destAccountId.value || undefined,
         nominal: nominal.value,

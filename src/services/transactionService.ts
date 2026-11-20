@@ -105,66 +105,86 @@ export class TransactionService {
     const touchesBalances = def ? def.touchesBalances : input.layanan !== 'jasa_transfer';
 
     if (touchesBalances) {
-      // Validasi akun Tarik Tunai (b30)
-      if (input.layanan === 'tarik_tunai' && input.sourceAccountId) {
+      // Validasi akun Tarik Tunai (A.3, T1)
+      if (input.layanan === 'tarik_tunai') {
+        if (!input.sourceAccountId) {
+          throw new AppError('Pilih rekening konter penerima transfer.');
+        }
         const srcAcc = await db.accounts.get(input.sourceAccountId);
-        if (!srcAcc || (srcAcc.type !== 'kas' && srcAcc.type !== 'bank')) {
-          throw new AppError('Sumber dana Tarik Tunai hanya Kas atau Rekening Bank.');
+        if (!srcAcc || srcAcc.type !== 'bank') {
+          throw new AppError('Rekening Terima Tarik Tunai hanya Rekening Bank.');
         }
-      }
-
-      // b31: Jika input.paymentAccountId diisi, validasi dan pakai itu (lewati penurunan)
-      if (input.paymentAccountId) {
-        const payAcc = await db.accounts.get(input.paymentAccountId);
-        if (!payAcc || !payAcc.isActive) {
-          throw new AppError('Akun pembayaran tidak ditemukan atau tidak aktif.');
-        }
-        const rule = def?.paymentRule;
-        if (rule === 'kas' || input.layanan === 'transfer') {
-          if (payAcc.type !== 'kas') {
-            throw new AppError('Diterima Di Transfer hanya Kas Kecil atau Kas Besar.');
-          }
-        } else if (rule === 'kas-bank' || input.layanan === 'tarik_tunai') {
-          if (payAcc.type !== 'kas' && payAcc.type !== 'bank') {
-            throw new AppError('Diterima Di Tarik Tunai hanya Kas atau Rekening Bank.');
-          }
-        } else {
-          const isMandiri = payAcc.type === 'bank' && payAcc.name.toLowerCase().includes('mandiri');
-          if (payAcc.type !== 'kas' && !isMandiri) {
-            throw new AppError('Diterima Di hanya Kas atau QR Mandiri (Rekening Mandiri).');
-          }
-        }
-        paymentAccountId = payAcc.id;
-      } else {
-        // 9 Nov 2026: Turunkan paymentAccountId otomatis dari cara bayar admin (feePaidBy)
-        const hasFeePaidBy = def ? def.hasFeePaidBy : ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob'].includes(input.layanan);
-
-        if (input.layanan !== 'tarik_tunai' && hasFeePaidBy && input.feePaidBy === 'debit_rekening') {
-          if (!input.sourceAccountId) {
-            throw new AppError(`Transaksi ${input.layanan} dengan Debit Rekening membutuhkan akun sumber dana.`);
-          }
-          paymentAccountId = input.sourceAccountId;
-        } else if (isOwnerService) {
-          // Layanan Owner: gunakan Kas jika ada, atau sourceAccountId, atau akun aktif pertama
-          const kasAccount = await db.accounts.where('type').equals('kas').first();
-          if (kasAccount) {
-            paymentAccountId = kasAccount.id;
-          } else if (input.sourceAccountId) {
-            paymentAccountId = input.sourceAccountId;
-          } else {
-            const firstActive = await db.accounts.filter((a) => a.isActive).first();
-            if (!firstActive) {
-              throw new AppError('Belum ada akun aktif. Tambahkan akun terlebih dahulu.');
-            }
-            paymentAccountId = firstActive.id;
-          }
-        } else {
-          // Layanan Kasir (Cash, tarik_tunai, atau layanan tanpa Bayar Admin): WAJIB ada akun Kas (perilaku b23)
+        if (!input.paymentAccountId) {
           const kasAccount = await db.accounts.where('type').equals('kas').first();
           if (!kasAccount) {
             throw new AppError('Belum ada akun Kas. Tambahkan akun Kas terlebih dahulu.');
           }
           paymentAccountId = kasAccount.id;
+        } else {
+          const payAcc = await db.accounts.get(input.paymentAccountId);
+          if (!payAcc || payAcc.type !== 'kas') {
+            throw new AppError('Sumber Dana Tarik Tunai hanya Kas Kecil atau Kas Besar.');
+          }
+          paymentAccountId = payAcc.id;
+        }
+      } else {
+        // T5: Validasi sumber transfer/topup/ppob (hanya bank/ewallet, tidak boleh kas)
+        if (['transfer', 'topup_ewallet', 'ppob'].includes(input.layanan) && input.sourceAccountId) {
+          const srcAcc = await db.accounts.get(input.sourceAccountId);
+          if (srcAcc && srcAcc.type === 'kas') {
+            throw new AppError('Sumber dana tidak boleh Akun Kas.');
+          }
+        }
+
+        // b31: Jika input.paymentAccountId diisi, validasi dan pakai itu (lewati penurunan)
+        if (input.paymentAccountId) {
+          const payAcc = await db.accounts.get(input.paymentAccountId);
+          if (!payAcc || !payAcc.isActive) {
+            throw new AppError('Akun pembayaran tidak ditemukan atau tidak aktif.');
+          }
+          const rule = def?.paymentRule;
+          if (rule === 'kas' || input.layanan === 'transfer') {
+            if (payAcc.type !== 'kas') {
+              throw new AppError('Diterima Di Transfer hanya Kas Kecil atau Kas Besar.');
+            }
+          } else if (rule === 'kas-mandiri') {
+            const isMandiri = payAcc.type === 'bank' && payAcc.name.toLowerCase().includes('mandiri');
+            if (payAcc.type !== 'kas' && !isMandiri) {
+              throw new AppError('Diterima Di hanya Kas atau QR Mandiri (Rekening Mandiri).');
+            }
+          }
+          paymentAccountId = payAcc.id;
+        } else {
+          // 9 Nov 2026: Turunkan paymentAccountId otomatis dari cara bayar admin (feePaidBy)
+          const hasFeePaidBy = def ? def.hasFeePaidBy : ['transfer', 'topup_ewallet', 'ppob'].includes(input.layanan);
+
+          if (input.layanan !== 'tarik_tunai' && hasFeePaidBy && input.feePaidBy === 'debit_rekening') {
+            if (!input.sourceAccountId) {
+              throw new AppError(`Transaksi ${input.layanan} dengan Debit Rekening membutuhkan akun sumber dana.`);
+            }
+            paymentAccountId = input.sourceAccountId;
+          } else if (isOwnerService) {
+            // Layanan Owner: gunakan Kas jika ada, atau sourceAccountId, atau akun aktif pertama
+            const kasAccount = await db.accounts.where('type').equals('kas').first();
+            if (kasAccount) {
+              paymentAccountId = kasAccount.id;
+            } else if (input.sourceAccountId) {
+              paymentAccountId = input.sourceAccountId;
+            } else {
+              const firstActive = await db.accounts.filter((a) => a.isActive).first();
+              if (!firstActive) {
+                throw new AppError('Belum ada akun aktif. Tambahkan akun terlebih dahulu.');
+              }
+              paymentAccountId = firstActive.id;
+            }
+          } else {
+            // Layanan Kasir (Cash, tarik_tunai, atau layanan tanpa Bayar Admin): WAJIB ada akun Kas (perilaku b23)
+            const kasAccount = await db.accounts.where('type').equals('kas').first();
+            if (!kasAccount) {
+              throw new AppError('Belum ada akun Kas. Tambahkan akun Kas terlebih dahulu.');
+            }
+            paymentAccountId = kasAccount.id;
+          }
         }
       }
     }
@@ -288,13 +308,24 @@ export class TransactionService {
         feePaidBy: input.feePaidBy,
       });
 
-      // Validasi saldo akun sumber: saldo tidak boleh minus akibat transaksi ini
-      if (effectiveSourceAccountId) {
-        const sourceBalance = await accountService.getBalance(effectiveSourceAccountId);
-        const outgoingDelta = deltas
-          .filter((d) => d.accountId === effectiveSourceAccountId && d.delta < 0)
-          .reduce((sum, d) => sum + Math.abs(d.delta), 0);
-        if (outgoingDelta > 0 && sourceBalance < outgoingDelta) {
+      // T6: Validasi saldo mencakup semua akun yang keluar pada himpunan delta yang akan diterapkan
+      const appliedDeltas = (paymentStatus === 'hutang')
+        ? (input.layanan === 'tarik_tunai'
+            ? deltas.filter((d) => d.accountId === paymentAccountId)
+            : deltas.filter((d) => d.accountId === effectiveSourceAccountId))
+        : deltas;
+
+      const outgoingByAccount = new Map<string, number>();
+      for (const d of appliedDeltas) {
+        if (d.delta < 0) {
+          const prev = outgoingByAccount.get(d.accountId) || 0;
+          outgoingByAccount.set(d.accountId, prev + Math.abs(d.delta));
+        }
+      }
+
+      for (const [accId, outgoingAmount] of outgoingByAccount.entries()) {
+        const balance = await accountService.getBalance(accId);
+        if (balance < outgoingAmount) {
           throw new AppError('Saldo akun sumber tidak mencukupi.');
         }
       }
@@ -351,17 +382,22 @@ export class TransactionService {
         // 3. Terapkan saldo mutasi (hanya jika transaksi bukan jasa_transfer dan statusnya bukan hutang tanpa penerimaan kas)
         if (input.layanan !== 'jasa_transfer') {
           if (paymentStatus === 'hutang') {
-            // Hanya delta sumber yang keluar
-            const sourceDeltas = deltas.filter((d) => d.accountId === input.sourceAccountId);
-            if (sourceDeltas.length > 0) {
-              await balanceService.applyDeltas({ transactionId, deltas: sourceDeltas, multiplier: 1 });
+            // T3: Hutang tarik_tunai menerapkan delta kas yang keluar; bank masuk saat lunas
+            const interimDeltas = input.layanan === 'tarik_tunai'
+              ? deltas.filter((d) => d.accountId === paymentAccountId)
+              : deltas.filter((d) => d.accountId === effectiveSourceAccountId);
+            if (interimDeltas.length > 0) {
+              await balanceService.applyDeltas({ transactionId, deltas: interimDeltas, multiplier: 1 });
             }
 
-            // Tambah hutang ke akun customer
+            // T4: Tambah hutang ke akun customer: tarik_tunai hanya nominal (tanpa fee)
             const customer = await db.customers.get(input.customerId!);
             if (customer) {
+              const debtAmount = input.layanan === 'tarik_tunai'
+                ? input.nominal
+                : input.nominal + (input.feePaidBy === 'cash' ? input.fee : 0);
               await db.customers.update(input.customerId!, {
-                balanceHutang: customer.balanceHutang + input.nominal + (input.feePaidBy === 'cash' ? input.fee : 0),
+                balanceHutang: customer.balanceHutang + debtAmount,
               });
             }
           } else {
@@ -529,7 +565,9 @@ export class TransactionService {
         if (tx.paymentStatus === 'hutang' && tx.customerId) {
           const customer = await db.customers.get(tx.customerId);
           if (customer) {
-            const debtAmount = tx.nominal + (tx.feePaidBy === 'cash' ? tx.fee : 0);
+            const debtAmount = tx.layanan === 'tarik_tunai'
+              ? tx.nominal
+              : tx.nominal + (tx.feePaidBy === 'cash' ? tx.fee : 0);
             await db.customers.update(tx.customerId, {
               balanceHutang: Math.max(0, customer.balanceHutang - debtAmount),
             });
@@ -638,8 +676,13 @@ export class TransactionService {
         if (!srcAcc || !srcAcc.isActive) {
           throw new AppError('Akun sumber dana baru tidak ditemukan atau tidak aktif.');
         }
-        if (tx.layanan === 'tarik_tunai' && srcAcc.type !== 'kas' && srcAcc.type !== 'bank') {
-          throw new AppError('Sumber dana Tarik Tunai hanya Kas atau Rekening Bank.');
+        if (tx.layanan === 'tarik_tunai') {
+          if (srcAcc.type !== 'bank') {
+            throw new AppError('Rekening Terima Tarik Tunai hanya Rekening Bank.');
+          }
+        }
+        if (['transfer', 'topup_ewallet', 'ppob'].includes(tx.layanan) && srcAcc.type === 'kas') {
+          throw new AppError('Sumber dana tidak boleh Akun Kas.');
         }
         if (tx.layanan === 'pindah_dana' && input.sourceAccountId === tx.destAccountId) {
           throw new AppError('Akun sumber dana tidak boleh sama dengan akun tujuan.');
@@ -655,13 +698,13 @@ export class TransactionService {
         if (!payAcc || !payAcc.isActive) {
           throw new AppError('Akun pembayaran baru tidak ditemukan atau tidak aktif.');
         }
-        if (tx.layanan === 'transfer') {
+        if (tx.layanan === 'tarik_tunai') {
+          if (payAcc.type !== 'kas') {
+            throw new AppError('Sumber Dana Tarik Tunai hanya Kas Kecil atau Kas Besar.');
+          }
+        } else if (tx.layanan === 'transfer') {
           if (payAcc.type !== 'kas') {
             throw new AppError('Diterima Di Transfer hanya Kas Kecil atau Kas Besar.');
-          }
-        } else if (tx.layanan === 'tarik_tunai') {
-          if (payAcc.type !== 'kas' && payAcc.type !== 'bank') {
-            throw new AppError('Diterima Di Tarik Tunai hanya Kas atau Rekening Bank.');
           }
         } else {
           const isMandiri = payAcc.type === 'bank' && payAcc.name.toLowerCase().includes('mandiri');
@@ -737,6 +780,7 @@ export class TransactionService {
         db.accountLedger,
         db.customers,
         db.auditLogs,
+        db.accounts,
       ],
       async () => {
         // 1. Update customer name bila ada perubahan
@@ -823,17 +867,47 @@ export class TransactionService {
             feePaidBy: tx.feePaidBy,
           });
 
+          // T6: Validasi saldo sebelum menerapkan delta baru (periksa akun dengan delta keluar)
+          const appliedDeltas = (tx.paymentStatus === 'hutang')
+            ? (tx.layanan === 'tarik_tunai'
+                ? newDeltas.filter((d) => d.accountId === effectivePaymentAccountId)
+                : newDeltas.filter((d) => d.accountId === effectiveSourceAccountId))
+            : newDeltas;
+
+          const outgoingByAccount = new Map<string, number>();
+          for (const d of appliedDeltas) {
+            if (d.delta < 0) {
+              const prev = outgoingByAccount.get(d.accountId) || 0;
+              outgoingByAccount.set(d.accountId, prev + Math.abs(d.delta));
+            }
+          }
+
+          for (const [accId, outgoingAmount] of outgoingByAccount.entries()) {
+            const balance = await accountService.getBalance(accId);
+            if (balance < outgoingAmount) {
+              throw new AppError('Saldo akun sumber tidak mencukupi.');
+            }
+          }
+
           // D. Terapkan deltas baru
           if (tx.paymentStatus === 'hutang') {
-            const sourceDeltas = newDeltas.filter((d) => d.accountId === effectiveSourceAccountId);
-            if (sourceDeltas.length > 0) {
-              await balanceService.applyDeltas({ transactionId, deltas: sourceDeltas, multiplier: 1 });
+            // T3: Hutang tarik_tunai menerapkan delta kas yang keluar; bank masuk saat lunas
+            const interimDeltas = tx.layanan === 'tarik_tunai'
+              ? newDeltas.filter((d) => d.accountId === effectivePaymentAccountId)
+              : newDeltas.filter((d) => d.accountId === effectiveSourceAccountId);
+            if (interimDeltas.length > 0) {
+              await balanceService.applyDeltas({ transactionId, deltas: interimDeltas, multiplier: 1 });
             }
             if (tx.customerId) {
               const customer = await db.customers.get(tx.customerId);
               if (customer) {
-                const oldDebt = tx.nominal + (tx.feePaidBy === 'cash' ? tx.fee : 0);
-                const newDebt = newNominal + (tx.feePaidBy === 'cash' ? newFee : 0);
+                // T4: Hutang tarik_tunai hanya nominal (tanpa fee)
+                const oldDebt = tx.layanan === 'tarik_tunai'
+                  ? tx.nominal
+                  : tx.nominal + (tx.feePaidBy === 'cash' ? tx.fee : 0);
+                const newDebt = tx.layanan === 'tarik_tunai'
+                  ? newNominal
+                  : newNominal + (tx.feePaidBy === 'cash' ? newFee : 0);
                 await db.customers.update(tx.customerId, {
                   balanceHutang: Math.max(0, customer.balanceHutang - oldDebt + newDebt),
                 });

@@ -15,21 +15,14 @@
           <!-- 1. Kategori Produk (PALING ATAS) -->
           <div class="form-group">
             <label class="form-label" for="product-category">Kategori Produk</label>
-            <select
+            <SearchableSelect
               id="product-category"
               v-model="category"
-              class="form-select"
+              :options="categoryOptions"
+              placeholder="-- Pilih Kategori --"
+              search-placeholder="Cari kategori..."
               required
-            >
-              <option value="voucher">Voucher Kuota (Stok Fisik)</option>
-              <option value="perdana">Kartu Perdana (Stok Fisik)</option>
-              <option value="aksesoris">Aksesoris / Charger / Kabel (Stok Fisik)</option>
-              <option value="pulsa">Pulsa Reguler (Digital)</option>
-              <option value="game">Game (Digital)</option>
-              <option value="data">Paket Data (Digital)</option>
-              <option value="token_pln">Token Listrik PLN (Digital)</option>
-              <option value="lainnya">Lainnya</option>
-            </select>
+            />
           </div>
 
           <!-- 2. Nama Produk (Wajib) -->
@@ -48,77 +41,24 @@
           <!-- 3. Operator / Brand (Combobox Filterable + Tombol +) -->
           <div class="form-group">
             <label class="form-label">Operator / Brand</label>
-            <div class="brand-combobox-wrapper">
-              <div ref="brandDropdownRef" class="brand-input-container">
-                <input
-                  id="product-operator"
-                  v-model="operatorInput"
-                  type="text"
-                  class="form-input brand-search-input"
-                  placeholder="Ketik untuk filter / pilih brand..."
-                  data-testid="brand-combobox-input"
-                  autocomplete="off"
-                  @focus="openBrandDropdown"
-                  @input="handleBrandInput"
-                />
-                <button
-                  type="button"
-                  class="btn-dropdown-toggle"
-                  aria-label="Buka daftar brand"
-                  @click="toggleBrandDropdown"
-                >
-                  <ChevronDown class="chevron-icon" :class="{ rotated: isBrandDropdownOpen }" />
-                </button>
-
-                <!-- Dropdown Menu Brand -->
-                <div
-                  v-if="isBrandDropdownOpen"
-                  class="brand-dropdown-menu"
-                  data-testid="brand-dropdown-menu"
-                >
-                  <ul v-if="filteredBrands.length > 0" class="brand-list">
-                    <li
-                      v-for="b in filteredBrands"
-                      :key="b.id"
-                      class="brand-item"
-                      :class="{ selected: operator === b.name }"
-                      :data-testid="`brand-option-${b.id}`"
-                      @click="selectBrand(b.name)"
-                    >
-                      <span class="brand-item-name">{{ b.name }}</span>
-                      <button
-                        type="button"
-                        class="btn-delete-brand"
-                        title="Hapus brand dari daftar"
-                        :data-testid="`delete-brand-${b.id}`"
-                        @click.stop="handleDeleteBrand(b)"
-                      >
-                        <Trash2 class="trash-icon" />
-                      </button>
-                    </li>
-                  </ul>
-                  <div v-else class="brand-empty-hint">
-                    <span v-if="availableBrands.length === 0">
-                      Belum ada brand untuk {{ categoryLabel }}. Ketik nama brand lalu ketuk tombol <strong>+</strong> di samping.
-                    </span>
-                    <span v-else>
-                      Tidak ada brand cocok "{{ operatorInput }}". Ketuk <strong>+</strong> untuk menambahkan.
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Tombol + untuk Tambah Brand Baru -->
-              <button
-                type="button"
-                class="btn-add-brand"
-                title="Tambah sebagai brand baru"
-                data-testid="btn-add-brand"
-                @click="handleAddBrand"
-              >
-                <Plus class="plus-icon" />
-              </button>
-            </div>
+            <SearchableSelect
+              id="product-operator"
+              v-model="operator"
+              :options="brandSelectOptions"
+              placeholder="-- Pilih / Cari Brand --"
+              search-placeholder="Ketik untuk filter / pilih brand..."
+              data-testid="brand-combobox"
+              trigger-test-id="brand-combobox-trigger"
+              search-test-id="brand-combobox-input"
+              menu-test-id="brand-dropdown-menu"
+              option-test-id-prefix="brand-option-"
+              item-class="brand-item"
+              add-label="+ Tambah Brand Baru"
+              add-test-id="btn-add-brand"
+              :empty-text="availableBrands.length === 0 ? `Belum ada brand untuk ${categoryLabel}.` : 'Tidak ada brand yang cocok.'"
+              @add="onAddBrand"
+              @delete="onDeleteBrand"
+            />
 
             <!-- Pesan Feedback Brand -->
             <span v-if="brandFeedback" class="brand-feedback" :class="brandFeedbackType">
@@ -351,7 +291,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ChevronDown, Plus, Trash2, AlertTriangle } from 'lucide-vue-next';
+import { Trash2, AlertTriangle } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
 import { productService } from '../services/productService';
 import { brandService } from '../services/brandService';
@@ -360,6 +300,7 @@ import { formatRupiah, parseRupiah } from '../utils/format';
 import { AppError } from '../core/errors';
 import { db } from '../db/database';
 import type { Brand, ProductCategory } from '../db/types';
+import SearchableSelect, { type SelectOption } from '../components/SearchableSelect.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -392,6 +333,66 @@ const categoryLabelMap: Record<ProductCategory, string> = {
 };
 const categoryLabel = computed(() => categoryLabelMap[category.value] || category.value);
 
+const categoryOptions = [
+  { value: 'voucher', label: 'Voucher Kuota (Stok Fisik)' },
+  { value: 'perdana', label: 'Kartu Perdana (Stok Fisik)' },
+  { value: 'aksesoris', label: 'Aksesoris / Charger / Kabel (Stok Fisik)' },
+  { value: 'pulsa', label: 'Pulsa Reguler (Digital)' },
+  { value: 'game', label: 'Game (Digital)' },
+  { value: 'data', label: 'Paket Data (Digital)' },
+  { value: 'token_pln', label: 'Token Listrik PLN (Digital)' },
+  { value: 'lainnya', label: 'Lainnya' },
+];
+
+const brandSelectOptions = computed<SelectOption[]>(() =>
+  availableBrands.value.map((b) => ({
+    value: b.name,
+    label: b.name,
+    deletable: true,
+    raw: b,
+  }))
+);
+
+async function onAddBrand(query: string) {
+  const brandName = (query || operator.value || '').trim();
+  if (!brandName || brandName.length < 2) {
+    setBrandFeedback('Nama brand minimal 2 karakter.', 'error');
+    return;
+  }
+
+  try {
+    const newBrand = await brandService.addBrand(brandName, category.value);
+    await loadBrands();
+    operator.value = newBrand.name;
+    setBrandFeedback(`Brand "${newBrand.name}" berhasil ditambahkan untuk ${categoryLabel.value}!`, 'success');
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      setBrandFeedback(err.message, 'error');
+    } else {
+      setBrandFeedback('Gagal menambahkan brand.', 'error');
+    }
+  }
+}
+
+async function onDeleteBrand(opt: SelectOption) {
+  const brand = opt.raw as Brand | undefined;
+  const brandId = brand ? brand.id : String(opt.value);
+  try {
+    await brandService.removeBrand(brandId);
+    await loadBrands();
+    if (operator.value === opt.label) {
+      operator.value = '';
+    }
+    setBrandFeedback(`Brand "${opt.label}" berhasil dihapus.`, 'success');
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      setBrandFeedback(err.message, 'error');
+    } else {
+      setBrandFeedback('Gagal menghapus brand.', 'error');
+    }
+  }
+}
+
 // Fields form
 const name = ref('');
 const category = ref<ProductCategory>('voucher');
@@ -408,8 +409,6 @@ const isInitialLoaded = ref(false);
 
 // Brand Combobox state
 const availableBrands = ref<Brand[]>([]);
-const isBrandDropdownOpen = ref(false);
-const brandDropdownRef = ref<HTMLElement | null>(null);
 const brandFeedback = ref('');
 const brandFeedbackType = ref<'success' | 'error'>('success');
 let feedbackTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -426,12 +425,6 @@ const displayModal = computed(() => {
 const displayHargaJual = computed(() => {
   if (hargaJual.value === 0) return '0';
   return hargaJual.value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-});
-
-const filteredBrands = computed(() => {
-  const query = operatorInput.value.trim().toLowerCase();
-  if (!query) return availableBrands.value;
-  return availableBrands.value.filter((b) => b.name.toLowerCase().includes(query));
 });
 
 function setBrandFeedback(msg: string, type: 'success' | 'error' = 'success') {
@@ -460,68 +453,6 @@ watch(category, async (newCat, oldCat) => {
     }
   }
 });
-
-function openBrandDropdown() {
-  isBrandDropdownOpen.value = true;
-}
-
-function toggleBrandDropdown() {
-  isBrandDropdownOpen.value = !isBrandDropdownOpen.value;
-}
-
-function handleBrandInput() {
-  isBrandDropdownOpen.value = true;
-  operator.value = operatorInput.value.trim();
-}
-
-function selectBrand(brandName: string) {
-  operator.value = brandName;
-  operatorInput.value = brandName;
-  isBrandDropdownOpen.value = false;
-}
-
-async function handleAddBrand() {
-  const brandName = operatorInput.value.trim();
-  if (!brandName || brandName.length < 2) {
-    setBrandFeedback('Nama brand minimal 2 karakter.', 'error');
-    return;
-  }
-
-  try {
-    const newBrand = await brandService.addBrand(brandName, category.value);
-    await loadBrands();
-    selectBrand(newBrand.name);
-    setBrandFeedback(`Brand "${newBrand.name}" berhasil ditambahkan untuk ${categoryLabel.value}!`, 'success');
-  } catch (err: unknown) {
-    if (err instanceof Error) {
-      setBrandFeedback(err.message, 'error');
-    } else {
-      setBrandFeedback('Gagal menambahkan brand.', 'error');
-    }
-  }
-}
-
-async function handleDeleteBrand(brand: Brand) {
-  try {
-    await brandService.removeBrand(brand.id);
-    await loadBrands();
-    if (operator.value === brand.name) {
-      operator.value = '';
-      operatorInput.value = '';
-    }
-    setBrandFeedback(`Brand "${brand.name}" telah dihapus.`, 'success');
-  } catch (err: unknown) {
-    if (err instanceof Error) {
-      setBrandFeedback(err.message, 'error');
-    }
-  }
-}
-
-function handleClickOutside(e: MouseEvent) {
-  if (brandDropdownRef.value && !brandDropdownRef.value.contains(e.target as Node)) {
-    isBrandDropdownOpen.value = false;
-  }
-}
 
 function onModalInput(e: Event) {
   const target = e.target as HTMLInputElement;
@@ -708,15 +639,9 @@ onMounted(async () => {
   }
   await loadBrands();
   isInitialLoaded.value = true;
-  if (typeof document !== 'undefined') {
-    document.addEventListener('click', handleClickOutside);
-  }
 });
 
 onUnmounted(() => {
-  if (typeof document !== 'undefined') {
-    document.removeEventListener('click', handleClickOutside);
-  }
   if (feedbackTimeout) clearTimeout(feedbackTimeout);
 });
 </script>

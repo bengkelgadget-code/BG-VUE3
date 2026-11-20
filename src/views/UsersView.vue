@@ -85,11 +85,13 @@
 
             <div class="form-group">
               <label class="form-label">Peran / Role</label>
-              <select v-model="addForm.role" class="form-select" required>
-                <option value="kasir">Kasir</option>
-                <option value="kepala_kasir">Kepala Kasir</option>
-                <option value="admin">Admin</option>
-              </select>
+              <SearchableSelect
+                v-model="addForm.role"
+                :options="roleOptions"
+                placeholder="-- Pilih Peran --"
+                search-placeholder="Cari peran..."
+                required
+              />
             </div>
 
             <div class="form-group">
@@ -148,11 +150,13 @@
 
             <div class="form-group">
               <label class="form-label">Peran / Role</label>
-              <select v-model="editForm.role" class="form-select" required>
-                <option value="kasir">Kasir</option>
-                <option value="kepala_kasir">Kepala Kasir</option>
-                <option value="admin">Admin</option>
-              </select>
+              <SearchableSelect
+                v-model="editForm.role"
+                :options="roleOptions"
+                placeholder="-- Pilih Peran --"
+                search-placeholder="Cari peran..."
+                required
+              />
             </div>
 
             <div class="modal-buttons">
@@ -224,6 +228,13 @@ import AppScaffold from '../components/AppScaffold.vue';
 import { useAuthStore } from '../stores/authStore';
 import { authService } from '../services/authService';
 import type { User, UserRole } from '../db/types';
+import SearchableSelect from '../components/SearchableSelect.vue';
+
+const roleOptions = [
+  { value: 'kasir', label: 'Kasir' },
+  { value: 'kepala_kasir', label: 'Kepala Kasir' },
+  { value: 'admin', label: 'Admin' },
+];
 
 const router = useRouter();
 const authStore = useAuthStore();

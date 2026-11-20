@@ -38,42 +38,28 @@
         <div v-if="selectedTab === 'pindah_dana'" class="form-card">
           <div class="form-group">
             <label class="form-label" for="source-account-pindah">Rekening / Akun Asal</label>
-            <select
+            <SearchableSelect
               id="source-account-pindah"
               v-model="sourceAccountId"
-              class="form-select"
+              :options="availableSourceAccountOptions"
+              placeholder="Pilih Akun Asal..."
+              search-placeholder="Cari akun asal..."
               data-testid="select-source-account"
               required
-            >
-              <option value="" disabled>Pilih Akun Asal...</option>
-              <option
-                v-for="acc in availableSourceAccounts"
-                :key="acc.id"
-                :value="acc.id"
-              >
-                {{ acc.name }} (Saldo: {{ formatRupiah(balances[acc.id] ?? 0) }})
-              </option>
-            </select>
+            />
           </div>
 
           <div class="form-group">
             <label class="form-label" for="dest-account-pindah">Rekening / Akun Tujuan</label>
-            <select
+            <SearchableSelect
               id="dest-account-pindah"
               v-model="destAccountId"
-              class="form-select"
+              :options="availableDestAccountOptions"
+              placeholder="Pilih Akun Tujuan..."
+              search-placeholder="Cari akun tujuan..."
               data-testid="select-dest-account"
               required
-            >
-              <option value="" disabled>Pilih Akun Tujuan...</option>
-              <option
-                v-for="acc in availableDestAccounts"
-                :key="acc.id"
-                :value="acc.id"
-              >
-                {{ acc.name }} (Saldo: {{ formatRupiah(balances[acc.id] ?? 0) }})
-              </option>
-            </select>
+            />
           </div>
         </div>
 
@@ -105,44 +91,30 @@
 
           <div class="form-group">
             <label class="form-label" for="source-account-deposit">Akun Sumber Dana (Kas / Bank / E-Wallet)</label>
-            <select
+            <SearchableSelect
               id="source-account-deposit"
               v-model="sourceAccountId"
-              class="form-select"
+              :options="paymentAccountOptions"
+              placeholder="Pilih Akun Sumber..."
+              search-placeholder="Cari akun sumber..."
               data-testid="select-source-account"
               required
-            >
-              <option value="" disabled>Pilih Akun Sumber...</option>
-              <option
-                v-for="acc in paymentAccounts"
-                :key="acc.id"
-                :value="acc.id"
-              >
-                {{ acc.name }} (Saldo: {{ formatRupiah(balances[acc.id] ?? 0) }})
-              </option>
-            </select>
+            />
           </div>
 
           <div class="form-group">
             <label class="form-label" for="dest-account-deposit">
               {{ depositType === 'deposit_provider' ? 'Akun Provider App Tujuan' : 'Akun Server Pulsa Tujuan' }}
             </label>
-            <select
+            <SearchableSelect
               id="dest-account-deposit"
               v-model="destAccountId"
-              class="form-select"
+              :options="depositDestAccountOptions"
+              placeholder="Pilih Akun Tujuan..."
+              search-placeholder="Cari akun tujuan..."
               data-testid="select-dest-account"
               required
-            >
-              <option value="" disabled>Pilih Akun Tujuan...</option>
-              <option
-                v-for="acc in depositDestAccounts"
-                :key="acc.id"
-                :value="acc.id"
-              >
-                {{ acc.name }} (Saldo: {{ formatRupiah(balances[acc.id] ?? 0) }})
-              </option>
-            </select>
+            />
             <p v-if="depositDestAccounts.length === 0" class="field-hint text-warning">
               Belum ada akun bertipe {{ depositType === 'deposit_provider' ? 'Provider App' : 'Server Pulsa' }}. Tambahkan di Master Akun.
             </p>
@@ -153,22 +125,15 @@
         <div v-else-if="selectedTab === 'pembelian_stok'" class="form-card">
           <div class="form-group">
             <label class="form-label" for="product-aksesoris">Pilih Produk Aksesoris</label>
-            <select
+            <SearchableSelect
               id="product-aksesoris"
               v-model="selectedProductId"
-              class="form-select"
+              :options="aksesorisProductOptions"
+              placeholder="Pilih Produk Master Aksesoris..."
+              search-placeholder="Cari produk aksesoris..."
               data-testid="select-product-stok"
               required
-            >
-              <option value="" disabled>Pilih Produk Master Aksesoris...</option>
-              <option
-                v-for="prod in aksesorisProducts"
-                :key="prod.id"
-                :value="prod.id"
-              >
-                {{ prod.name }} (Stok saat ini: {{ prod.stock ?? 0 }} pcs)
-              </option>
-            </select>
+            />
             <p v-if="aksesorisProducts.length === 0" class="field-hint text-warning">
               Belum ada produk lokal berkategori aksesoris di Master Produk.
             </p>
@@ -204,22 +169,15 @@
 
           <div class="form-group">
             <label class="form-label" for="source-account-stok">Akun Pembayaran (Kas / Rekening)</label>
-            <select
+            <SearchableSelect
               id="source-account-stok"
               v-model="sourceAccountId"
-              class="form-select"
+              :options="paymentAccountOptions"
+              placeholder="Pilih Akun Sumber Dana..."
+              search-placeholder="Cari akun sumber..."
               data-testid="select-source-account"
               required
-            >
-              <option value="" disabled>Pilih Akun Sumber Dana...</option>
-              <option
-                v-for="acc in paymentAccounts"
-                :key="acc.id"
-                :value="acc.id"
-              >
-                {{ acc.name }} (Saldo: {{ formatRupiah(balances[acc.id] ?? 0) }})
-              </option>
-            </select>
+            />
           </div>
         </div>
 
@@ -227,22 +185,15 @@
         <div v-else-if="selectedTab === 'operasional'" class="form-card">
           <div class="form-group">
             <label class="form-label" for="source-account-operasional">Akun Sumber Dana (Kas / Rekening / E-Wallet)</label>
-            <select
+            <SearchableSelect
               id="source-account-operasional"
               v-model="sourceAccountId"
-              class="form-select"
+              :options="paymentAccountOptions"
+              placeholder="Pilih Akun Sumber..."
+              search-placeholder="Cari akun sumber..."
               data-testid="select-source-account"
               required
-            >
-              <option value="" disabled>Pilih Akun Sumber...</option>
-              <option
-                v-for="acc in paymentAccounts"
-                :key="acc.id"
-                :value="acc.id"
-              >
-                {{ acc.name }} (Saldo: {{ formatRupiah(balances[acc.id] ?? 0) }})
-              </option>
-            </select>
+            />
           </div>
 
           <div class="form-group">
@@ -341,6 +292,7 @@ import { formatRupiah, parseRupiah } from '../utils/format';
 import { AppError } from '../core/errors';
 import { ownerLayanan } from '../core/layanan';
 import type { Account, Product } from '../db/types';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -414,6 +366,41 @@ const depositDestAccounts = computed(() => {
   const targetType = depositType.value === 'deposit_provider' ? 'provider_app' : 'server_pulsa';
   return allAccounts.value.filter((a) => a.isActive && a.type === targetType);
 });
+
+const availableSourceAccountOptions = computed(() =>
+  availableSourceAccounts.value.map((acc) => ({
+    value: acc.id,
+    label: `${acc.name} (Saldo: ${formatRupiah(balances.value[acc.id] ?? 0)})`,
+  }))
+);
+
+const availableDestAccountOptions = computed(() =>
+  availableDestAccounts.value.map((acc) => ({
+    value: acc.id,
+    label: `${acc.name} (Saldo: ${formatRupiah(balances.value[acc.id] ?? 0)})`,
+  }))
+);
+
+const paymentAccountOptions = computed(() =>
+  paymentAccounts.value.map((acc) => ({
+    value: acc.id,
+    label: `${acc.name} (Saldo: ${formatRupiah(balances.value[acc.id] ?? 0)})`,
+  }))
+);
+
+const depositDestAccountOptions = computed(() =>
+  depositDestAccounts.value.map((acc) => ({
+    value: acc.id,
+    label: `${acc.name} (Saldo: ${formatRupiah(balances.value[acc.id] ?? 0)})`,
+  }))
+);
+
+const aksesorisProductOptions = computed(() =>
+  aksesorisProducts.value.map((prod) => ({
+    value: prod.id,
+    label: `${prod.name} (Stok saat ini: ${prod.stock ?? 0} pcs)`,
+  }))
+);
 
 async function loadData() {
   allAccounts.value = await db.accounts.filter((a) => a.isActive).toArray();

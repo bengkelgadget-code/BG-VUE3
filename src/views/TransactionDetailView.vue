@@ -234,39 +234,69 @@
             </div>
 
             <!-- Akun: Sumber Dana & Diterima Di (Khusus Owner & Kepala Kasir) -->
-            <div
-              v-if="canEditAccounts && transaction.sourceAccountId && currentTxDef?.touchesBalances"
-              class="form-group"
-            >
-              <label class="form-label" for="edit-source-account">Sumber Dana</label>
-              <select
-                id="edit-source-account"
-                v-model="editForm.sourceAccountId"
-                class="form-select"
-                data-testid="edit-select-source-account"
-              >
-                <option v-for="acc in availableSourceAccounts" :key="acc.id" :value="acc.id">
-                  {{ acc.name }}
-                </option>
-              </select>
-            </div>
+            <!-- A.3, T1: Kasus Khusus Tarik Tunai -->
+            <template v-if="canEditAccounts && transaction.layanan === 'tarik_tunai'">
+              <div class="form-group">
+                <label class="form-label" for="edit-payment-account-tarik">Sumber Dana</label>
+                <SearchableSelect
+                  id="edit-payment-account-tarik"
+                  v-model="editForm.paymentAccountId"
+                  :options="tarikTunaiKasOptions"
+                  placeholder="Pilih Kas..."
+                  search-placeholder="Cari kas..."
+                  data-testid="edit-select-payment-account"
+                  required
+                />
+              </div>
 
-            <div
-              v-if="canEditAccounts && transaction.accountId && currentTxDef?.paymentRule !== 'none'"
-              class="form-group"
-            >
-              <label class="form-label" for="edit-payment-account">Diterima Di</label>
-              <select
-                id="edit-payment-account"
-                v-model="editForm.paymentAccountId"
-                class="form-select"
-                data-testid="edit-select-payment-account"
+              <div class="form-group">
+                <label class="form-label" for="edit-source-account-tarik">Rekening Terima Transfer</label>
+                <SearchableSelect
+                  id="edit-source-account-tarik"
+                  v-model="editForm.sourceAccountId"
+                  :options="tarikTunaiBankOptions"
+                  placeholder="Pilih Rekening Bank..."
+                  search-placeholder="Cari rekening..."
+                  data-testid="edit-select-source-account"
+                  required
+                />
+              </div>
+            </template>
+
+            <!-- Akun: Layanan selain Tarik Tunai -->
+            <template v-else-if="canEditAccounts">
+              <div
+                v-if="transaction.sourceAccountId && currentTxDef?.touchesBalances"
+                class="form-group"
               >
-                <option v-for="acc in availablePaymentAccounts" :key="acc.id" :value="acc.id">
-                  {{ getPaymentOptionLabel(acc) }}
-                </option>
-              </select>
-            </div>
+                <label class="form-label" for="edit-source-account">Sumber Dana</label>
+                <SearchableSelect
+                  id="edit-source-account"
+                  v-model="editForm.sourceAccountId"
+                  :options="sourceAccountOptions"
+                  placeholder="Pilih Sumber Dana..."
+                  search-placeholder="Cari sumber dana..."
+                  data-testid="edit-select-source-account"
+                  required
+                />
+              </div>
+
+              <div
+                v-if="transaction.accountId && currentTxDef?.paymentRule !== 'none'"
+                class="form-group"
+              >
+                <label class="form-label" for="edit-payment-account">Diterima Di</label>
+                <SearchableSelect
+                  id="edit-payment-account"
+                  v-model="editForm.paymentAccountId"
+                  :options="paymentAccountOptions"
+                  placeholder="Pilih Akun Penerima..."
+                  search-placeholder="Cari akun..."
+                  data-testid="edit-select-payment-account"
+                  required
+                />
+              </div>
+            </template>
 
             <div v-if="editError" class="edit-error" data-testid="edit-error">
               {{ editError }}
@@ -359,6 +389,7 @@ import { formatRupiah, formatTanggalWita } from '../utils/format';
 import type { Transaction, TransactionItem, Account } from '../db/types';
 import { AppError } from '../core/errors';
 import { getLayananDef } from '../core/layanan';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -393,15 +424,33 @@ const currentTxDef = computed(() =>
   transaction.value ? getLayananDef(transaction.value.layanan) : undefined
 );
 
+const tarikTunaiKasOptions = computed(() => {
+  return activeAccounts.value
+    .filter((a) => a.type === 'kas')
+    .map((a) => ({ value: a.id, label: a.name }));
+});
+
+const tarikTunaiBankOptions = computed(() => {
+  const currentSrcId = transaction.value?.sourceAccountId;
+  return activeAccounts.value
+    .filter((a) => a.type === 'bank' || a.id === currentSrcId)
+    .map((a) => ({
+      value: a.id,
+      label: a.type !== 'bank' ? `${a.name} (Data lama: ${a.type})` : a.name,
+    }));
+});
+
 const availableSourceAccounts = computed(() => {
   if (!transaction.value) return [];
   const srv = transaction.value.layanan;
   const def = currentTxDef.value;
   if (srv === 'tarik_tunai') {
-    return activeAccounts.value.filter((a) => a.type === 'kas' || a.type === 'bank');
+    const currentSrcId = transaction.value.sourceAccountId;
+    return activeAccounts.value.filter((a) => a.type === 'bank' || a.id === currentSrcId);
   }
   if (['transfer', 'topup_ewallet', 'ppob'].includes(srv)) {
-    return activeAccounts.value.filter((a) => ['bank', 'ewallet', 'kas'].includes(a.type));
+    // T5: Bank & E-Wallet saja, tanpa kas
+    return activeAccounts.value.filter((a) => ['bank', 'ewallet'].includes(a.type));
   }
   if (def?.group === 'penjualan' && def.needsSourceAccount) {
     return activeAccounts.value.filter((a) => a.type === 'server_pulsa');
@@ -412,19 +461,35 @@ const availableSourceAccounts = computed(() => {
   return activeAccounts.value;
 });
 
+const sourceAccountOptions = computed(() =>
+  availableSourceAccounts.value.map((a) => ({ value: a.id, label: a.name }))
+);
+
 const availablePaymentAccounts = computed(() => {
   if (!transaction.value) return [];
+  if (transaction.value.layanan === 'tarik_tunai') {
+    return activeAccounts.value.filter((a) => a.type === 'kas');
+  }
   const rule = currentTxDef.value?.paymentRule;
   if (rule === 'kas') {
     return activeAccounts.value.filter((a) => a.type === 'kas');
   }
-  if (rule === 'kas-bank') {
-    return activeAccounts.value.filter((a) => a.type === 'bank' || a.type === 'kas');
+  if (rule === 'kas-mandiri') {
+    return activeAccounts.value.filter(
+      (a) => a.type === 'kas' || (a.type === 'bank' && a.name.toLowerCase().includes('mandiri'))
+    );
   }
   return activeAccounts.value.filter(
     (a) => a.type === 'kas' || (a.type === 'bank' && a.name.toLowerCase().includes('mandiri'))
   );
 });
+
+const paymentAccountOptions = computed(() =>
+  availablePaymentAccounts.value.map((a) => ({
+    value: a.id,
+    label: getPaymentOptionLabel(a),
+  }))
+);
 
 function getPaymentOptionLabel(acc: Account): string {
   if (transaction.value?.layanan !== 'tarik_tunai' && acc.type === 'bank' && acc.name.toLowerCase().includes('mandiri')) {

@@ -51,12 +51,13 @@
       <form class="form-card" @submit.prevent="handleSubmitHandover">
         <div class="form-group">
           <label class="form-label">Petugas Penerima Shift *</label>
-          <select v-model="toUserId" class="form-select" required>
-            <option value="" disabled>Pilih Petugas yang Menerima</option>
-            <option v-for="user in availableRecipients" :key="user.id" :value="user.id">
-              {{ user.name }} ({{ user.role.toUpperCase() }})
-            </option>
-          </select>
+          <SearchableSelect
+            v-model="toUserId"
+            :options="recipientOptions"
+            placeholder="Pilih Petugas yang Menerima"
+            search-placeholder="Cari petugas..."
+            required
+          />
         </div>
 
         <div class="dual-pin-grid">
@@ -116,6 +117,7 @@ import type { Shift, User, Account } from '../db/types';
 import { shiftService } from '../services/shiftService';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah } from '../utils/format';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -144,6 +146,13 @@ const availableRecipients = computed(() => {
   if (!shift.value) return [];
   return users.value.filter((u) => u.isActive && u.id !== shift.value!.userId);
 });
+
+const recipientOptions = computed(() =>
+  availableRecipients.value.map((u) => ({
+    value: u.id,
+    label: `${u.name} (${u.role.toUpperCase()})`,
+  }))
+);
 
 const hasDiscrepancy = computed(() => {
   if (!shift.value?.selisih) return false;

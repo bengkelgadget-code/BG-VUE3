@@ -28,14 +28,15 @@ export interface LayananDef {
   productCategories: string[];      // kategori produk yang melekat; [] = tidak ada produk
   productSort: 'telecom' | 'token' | 'alpha' | 'brand-alpha' | 'none';
   hasFee: boolean;                  // tampil field Biaya Admin
-  hasFeePaidBy: boolean;            // tampil toggle Bayar Admin Cash/Debit
+  hasFeePaidBy: boolean;            // tampil toggle Bayar Admin Cash/Debit (TIDAK untuk tarik_tunai & jasa_transfer)
   needsSourceAccount: boolean;      // tampil field Sumber Dana
-  paymentRule: 'kas' | 'kas-bank' | 'kas-mandiri' | 'none'; // aturan Diterima Di (b31)
+  sourceTypes: string[];            // tipe akun yang boleh jadi sumber (transfer/topup/ppob: bank/ewallet tanpa kas)
+  paymentRule: 'kas' | 'kas-bank' | 'kas-mandiri' | 'none'; // aturan Diterima Di (b31); 'none' = tidak ada field Diterima Di
   needsReferenceNo: boolean;        // tampil field Nomor Tujuan / referensi
   referenceOptional: boolean;       // true hanya untuk pulsa
   supportsHutang: boolean;          // tampil toggle Lunas/Hutang
   touchesBalances: boolean;         // false hanya untuk jasa_transfer
-  isOwnerOnly: boolean;
+  isOwnerOnly: boolean;             // true hanya untuk 5 layanan owner
 }
 
 export const LAYANAN_DEFS: Record<string, LayananDef> = {
@@ -50,6 +51,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: true,
     hasFeePaidBy: true,
     needsSourceAccount: true,
+    sourceTypes: ['bank', 'ewallet'], // T5: sumber transfer tidak boleh kas
     paymentRule: 'kas',
     needsReferenceNo: true,
     referenceOptional: false,
@@ -66,9 +68,10 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     productCategories: [],
     productSort: 'none',
     hasFee: true,
-    hasFeePaidBy: true,
+    hasFeePaidBy: false, // T2: tidak ada toggle bayar admin
     needsSourceAccount: true,
-    paymentRule: 'kas-bank',
+    sourceTypes: ['bank'], // T1: rekening terima transfer hanya bank
+    paymentRule: 'none', // T1: tidak ada field 'Diterima Di'; kas pembayar mengisi paymentAccountId
     needsReferenceNo: false,
     referenceOptional: false,
     supportsHutang: true,
@@ -86,6 +89,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: true,
     hasFeePaidBy: true,
     needsSourceAccount: true,
+    sourceTypes: ['bank', 'ewallet'], // T5: sumber topup tidak boleh kas
     paymentRule: 'kas-mandiri',
     needsReferenceNo: true,
     referenceOptional: false,
@@ -98,12 +102,13 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     label: 'Tagihan PPOB',
     group: 'transfer',
     icon: Receipt,
-    keywords: ['bpjs', 'pdam', 'tagihan', 'angsuran', 'ppob', 'listrik pasca'],
+    keywords: ['ppob', 'tagihan', 'listrik pasca', 'pdam', 'bpjs', 'indihome'],
     productCategories: [],
     productSort: 'none',
     hasFee: true,
     hasFeePaidBy: true,
     needsSourceAccount: true,
+    sourceTypes: ['bank', 'ewallet'], // T5: sumber ppob tidak boleh kas
     paymentRule: 'kas-mandiri',
     needsReferenceNo: true,
     referenceOptional: false,
@@ -116,15 +121,16 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     label: 'Pulsa',
     group: 'penjualan',
     icon: Smartphone,
-    keywords: ['pul', 'pulsa', 'reguler', 'telepon', 'hp'],
+    keywords: ['pulsa', 'isi pulsa', 'reguler'],
     productCategories: ['pulsa'],
     productSort: 'telecom',
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['server_pulsa'],
     paymentRule: 'kas-mandiri',
     needsReferenceNo: true,
-    referenceOptional: true, // b33: no telepon pulsa opsional
+    referenceOptional: true, // B.4: no HP pulsa opsional
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
@@ -134,12 +140,13 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     label: 'Paket Data',
     group: 'penjualan',
     icon: Layers,
-    keywords: ['kuota', 'paket data', 'internet', 'paket', 'data'],
+    keywords: ['data', 'kuota', 'paket internet', 'internet'],
     productCategories: ['data'],
     productSort: 'telecom',
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['server_pulsa'],
     paymentRule: 'kas-mandiri',
     needsReferenceNo: true,
     referenceOptional: false,
@@ -152,12 +159,13 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     label: 'Token PLN',
     group: 'penjualan',
     icon: Zap,
-    keywords: ['listrik', 'pln', 'token', 'stroom', 'token_pln'],
+    keywords: ['pln', 'token', 'listrik', 'token pln', 'stroom'],
     productCategories: ['token_pln'],
     productSort: 'token',
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['server_pulsa'],
     paymentRule: 'kas-mandiri',
     needsReferenceNo: true,
     referenceOptional: false,
@@ -170,12 +178,13 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     label: 'Game',
     group: 'penjualan',
     icon: Gamepad2,
-    keywords: ['game', 'voucher game', 'diamond', 'ml', 'free fire', 'ff', 'pubg', 'topup game'],
+    keywords: ['game', 'diamond', 'free fire', 'mobile legends', 'ml', 'ff', 'genshin', 'steam'],
     productCategories: ['game'],
     productSort: 'brand-alpha',
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['server_pulsa'],
     paymentRule: 'kas-mandiri',
     needsReferenceNo: true,
     referenceOptional: false,
@@ -194,6 +203,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: false,
+    sourceTypes: [],
     paymentRule: 'kas-mandiri',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -212,6 +222,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: false,
+    sourceTypes: [],
     paymentRule: 'kas-mandiri',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -221,7 +232,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
   },
   aksesoris: {
     code: 'aksesoris',
-    label: 'ACC', // b33: label ACC
+    label: 'ACC', // B.5: label ACC
     group: 'penjualan',
     icon: Package,
     keywords: ['acc', 'aksesoris', 'kabel', 'charger', 'casing', 'headset', 'tempered glass'],
@@ -230,6 +241,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: false,
+    sourceTypes: [],
     paymentRule: 'kas-mandiri',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -248,6 +260,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: true,
     hasFeePaidBy: false,
     needsSourceAccount: false,
+    sourceTypes: [],
     paymentRule: 'none',
     needsReferenceNo: true,
     referenceOptional: false,
@@ -260,12 +273,13 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     label: 'Pindah Dana',
     group: 'owner',
     icon: ArrowDownUp,
-    keywords: ['pindah dana', 'mutasi', 'transfer internal'],
+    keywords: ['pindah dana', 'mutasi kas', 'tarik kas', 'setor bank'],
     productCategories: [],
     productSort: 'none',
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['kas', 'bank', 'ewallet', 'server_pulsa', 'provider_app'],
     paymentRule: 'none',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -278,12 +292,13 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     label: 'Deposit Server',
     group: 'owner',
     icon: Server,
-    keywords: ['deposit server', 'isi server', 'saldo server'],
+    keywords: ['deposit server', 'isi saldo server', 'topup server'],
     productCategories: [],
     productSort: 'none',
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['bank'],
     paymentRule: 'none',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -296,12 +311,13 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     label: 'Deposit Provider',
     group: 'owner',
     icon: Radio,
-    keywords: ['deposit provider', 'isi provider', 'saldo provider'],
+    keywords: ['deposit provider', 'digipos', 'rita', 'siDOMPUL', 'simple'],
     productCategories: [],
     productSort: 'none',
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['bank'],
     paymentRule: 'none',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -320,6 +336,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['kas', 'bank', 'ewallet', 'server_pulsa', 'provider_app'],
     paymentRule: 'none',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -338,6 +355,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
+    sourceTypes: ['kas', 'bank', 'ewallet', 'server_pulsa', 'provider_app'],
     paymentRule: 'none',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -356,6 +374,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: false,
+    sourceTypes: [],
     paymentRule: 'kas-mandiri',
     needsReferenceNo: false,
     referenceOptional: false,
@@ -366,14 +385,14 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
 };
 
 /**
- * Urutan baku picker layanan staf:
- * transfer -> tarik_tunai -> jasa_transfer -> topup_ewallet -> pulsa -> data -> token_pln -> game -> voucher -> perdana -> aksesoris -> ppob -> pemasukan_lain
+ * Urutan baku picker layanan staf (13 layanan):
+ * transfer -> tarik_tunai -> topup_ewallet -> ppob -> pulsa -> data -> token_pln -> game -> voucher -> perdana -> aksesoris -> jasa_transfer -> pemasukan_lain
  */
 const STAFF_SERVICE_ORDER = [
   'transfer',
   'tarik_tunai',
-  'jasa_transfer',
   'topup_ewallet',
+  'ppob',
   'pulsa',
   'data',
   'token_pln',
@@ -381,9 +400,9 @@ const STAFF_SERVICE_ORDER = [
   'voucher',
   'perdana',
   'aksesoris',
-  'ppob',
-  'operasional',
+  'jasa_transfer',
   'pemasukan_lain',
+  'operasional',
 ];
 
 const OWNER_SERVICE_ORDER = [
@@ -419,5 +438,9 @@ export function productCategoriesForLayanan(code: string): string[] {
 }
 
 export function paymentRuleForLayanan(code: string): LayananDef['paymentRule'] {
-  return LAYANAN_DEFS[code]?.paymentRule ?? 'kas-mandiri';
+  return LAYANAN_DEFS[code]?.paymentRule ?? 'none';
+}
+
+export function sourceTypesForLayanan(code: string): string[] {
+  return LAYANAN_DEFS[code]?.sourceTypes ?? [];
 }

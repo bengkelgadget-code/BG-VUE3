@@ -80,11 +80,13 @@
 
           <div class="form-group">
             <label class="form-label">Uang Diterima Di Akun:</label>
-            <select v-model="targetAccountId" class="form-select" required>
-              <option v-for="acc in availablePaymentAccounts" :key="acc.id" :value="acc.id">
-                {{ acc.name }} ({{ acc.type }})
-              </option>
-            </select>
+            <SearchableSelect
+              v-model="targetAccountId"
+              :options="paymentAccountOptions"
+              placeholder="-- Pilih Akun Penerima --"
+              search-placeholder="Cari akun..."
+              required
+            />
           </div>
 
           <div v-if="payError" class="error-banner">
@@ -116,6 +118,7 @@ import { db } from '../db/database';
 import { useAuthStore } from '../stores/authStore';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
 import type { Account } from '../db/types';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const authStore = useAuthStore();
 
@@ -130,6 +133,13 @@ const isPaying = ref<boolean>(false);
 
 const totalPiutang = computed(() =>
   receivables.value.reduce((sum, r) => sum + r.totalHutang, 0)
+);
+
+const paymentAccountOptions = computed(() =>
+  availablePaymentAccounts.value.map((acc) => ({
+    value: acc.id,
+    label: `${acc.name} (${acc.type})`,
+  }))
 );
 
 function getWhatsAppLink(r: ReceivableSummary): string {

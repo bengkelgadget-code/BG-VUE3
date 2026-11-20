@@ -28,25 +28,13 @@
 
         <div class="filter-select-wrapper">
           <label for="filter-select" class="filter-label">Filter Spesifik:</label>
-          <select id="filter-select" v-model="selectedFilter" class="filter-select">
-            <option value="all">Semua Layanan</option>
-            <optgroup label="Penjualan">
-              <option value="group_penjualan">Semua Penjualan</option>
-              <option v-for="l in penjualanLayananList" :key="l.code" :value="l.code">{{ l.label }}</option>
-            </optgroup>
-            <optgroup label="Transfer & Top-up">
-              <option value="group_transfer">Semua Transfer & Top-up</option>
-              <option v-for="l in transferLayananList" :key="l.code" :value="l.code">{{ l.label }}</option>
-            </optgroup>
-            <optgroup label="Lainnya">
-              <option value="group_lainnya">Semua Lainnya</option>
-              <option v-for="l in lainnyaLayananList" :key="l.code" :value="l.code">{{ l.label }}</option>
-            </optgroup>
-            <optgroup label="Status Khusus">
-              <option value="hutang">Hutang (Belum Lunas)</option>
-              <option value="void">Batal (Void)</option>
-            </optgroup>
-          </select>
+          <SearchableSelect
+            id="filter-select"
+            v-model="selectedFilter"
+            :options="filterSelectOptions"
+            placeholder="Semua Layanan"
+            search-placeholder="Cari filter..."
+          />
         </div>
       </div>
 
@@ -105,6 +93,7 @@ import { db } from '../db/database';
 import type { Transaction } from '../db/types';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
 import { layananByGroup } from '../core/layanan';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -133,6 +122,18 @@ const lainnyaLayananList = [
 const PENJUALAN_SERVICES = penjualanLayananList.map((l) => l.code);
 const TRANSFER_SERVICES = transferLayananList.map((l) => l.code);
 const LAINNYA_SERVICES = lainnyaLayananList.map((l) => l.code);
+
+const filterSelectOptions = computed(() => [
+  { value: 'all', label: 'Semua Layanan' },
+  { value: 'group_penjualan', label: 'Semua Penjualan', group: 'Penjualan', hint: 'Grup' },
+  ...penjualanLayananList.map((l) => ({ value: l.code, label: l.label, group: 'Penjualan', hint: 'Penjualan' })),
+  { value: 'group_transfer', label: 'Semua Transfer & Top-up', group: 'Transfer & Top-up', hint: 'Grup' },
+  ...transferLayananList.map((l) => ({ value: l.code, label: l.label, group: 'Transfer & Top-up', hint: 'Transfer' })),
+  { value: 'group_lainnya', label: 'Semua Lainnya', group: 'Lainnya', hint: 'Grup' },
+  ...lainnyaLayananList.map((l) => ({ value: l.code, label: l.label, group: 'Lainnya', hint: 'Lainnya' })),
+  { value: 'hutang', label: 'Hutang (Belum Lunas)', group: 'Status', hint: 'Status' },
+  { value: 'void', label: 'Batal (Void)', group: 'Status', hint: 'Status' },
+]);
 
 onMounted(async () => {
   await loadData();

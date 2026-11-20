@@ -25,13 +25,12 @@
 
           <div class="form-group">
             <label class="form-label">Kelompok Akun</label>
-            <select v-model="type" class="form-select" required>
-              <option value="kas">Kas (Uang Tunai Laci / Brankas)</option>
-              <option value="bank">Bank (Rekening Bank)</option>
-              <option value="ewallet">E-Wallet (DANA, OVO, GoPay, ShopeePay)</option>
-              <option value="server_pulsa">Server Pulsa (catatan deposit)</option>
-              <option value="provider_app">Aplikasi Provider (catatan agen resmi)</option>
-            </select>
+            <SearchableSelect
+              v-model="type"
+              :options="accountTypeOptions"
+              search-placeholder="Cari kelompok akun..."
+              required
+            />
           </div>
 
           <div v-if="type !== 'kas'" class="form-group">
@@ -89,8 +88,17 @@ import AppScaffold from '../components/AppScaffold.vue';
 import { accountService } from '../services/accountService';
 import { parseRupiah } from '../utils/format';
 import { AppError } from '../core/errors';
+import SearchableSelect from '../components/SearchableSelect.vue';
 
 const router = useRouter();
+
+const accountTypeOptions = [
+  { value: 'kas', label: 'Kas (Uang Tunai Laci / Brankas)' },
+  { value: 'bank', label: 'Bank (Rekening Bank)' },
+  { value: 'ewallet', label: 'E-Wallet (DANA, OVO, GoPay, ShopeePay)' },
+  { value: 'server_pulsa', label: 'Server Pulsa (catatan deposit)' },
+  { value: 'provider_app', label: 'Aplikasi Provider (catatan agen resmi)' },
+];
 
 const name = ref('');
 const type = ref<'kas' | 'bank' | 'ewallet' | 'server_pulsa' | 'provider_app'>('kas');

@@ -144,10 +144,10 @@ describe('b7: Brand Service, Form Tambah Produk Master & Play Protect Notice', (
       await flushPromises();
 
       // Buka dropdown
-      const input = wrapper.find('[data-testid="brand-combobox-input"]');
-      await input.trigger('focus');
+      await wrapper.find('[data-testid="brand-combobox-trigger"]').trigger('click');
       await flushPromises();
 
+      const input = wrapper.find('[data-testid="brand-combobox-input"]');
       const dropdown = wrapper.find('[data-testid="brand-dropdown-menu"]');
       expect(dropdown.exists()).toBe(true);
       expect(dropdown.text()).toContain('Telkomsel');
@@ -172,7 +172,7 @@ describe('b7: Brand Service, Form Tambah Produk Master & Play Protect Notice', (
       // Brand baru "Tri" masuk ke database dan terpilih
       const allBrands = await brandService.listBrands();
       expect(allBrands.some((b) => b.name === 'Tri')).toBe(true);
-      expect((input.element as HTMLInputElement).value).toBe('Tri');
+      expect(wrapper.find('[data-testid="brand-combobox-trigger"]').text()).toContain('Tri');
     });
 
     it('tombol hapus brand di dalam dropdown menghapus brand dari referensi', async () => {
@@ -183,8 +183,7 @@ describe('b7: Brand Service, Form Tambah Produk Master & Play Protect Notice', (
       });
       await flushPromises();
 
-      const input = wrapper.find('[data-testid="brand-combobox-input"]');
-      await input.trigger('focus');
+      await wrapper.find('[data-testid="brand-combobox-trigger"]').trigger('click');
       await flushPromises();
 
       const deleteBtn = wrapper.find(`[data-testid="delete-brand-${b.id}"]`);
