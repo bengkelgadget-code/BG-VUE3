@@ -99,7 +99,7 @@
                   </ul>
                   <div v-else class="brand-empty-hint">
                     <span v-if="availableBrands.length === 0">
-                      Daftar brand kosong. Ketik nama brand lalu ketuk tombol <strong>+</strong> di samping.
+                      Belum ada brand untuk {{ categoryLabel }}. Ketik nama brand lalu ketuk tombol <strong>+</strong> di samping.
                     </span>
                     <span v-else>
                       Tidak ada brand cocok "{{ operatorInput }}". Ketuk <strong>+</strong> untuk menambahkan.
@@ -349,7 +349,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ChevronDown, Plus, Trash2, AlertTriangle } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
@@ -380,6 +380,18 @@ const deactivateError = ref('');
 const isProductActive = ref(true);
 const isActivating = ref(false);
 
+const categoryLabelMap: Record<ProductCategory, string> = {
+  voucher: 'Voucher Kuota',
+  perdana: 'Kartu Perdana',
+  aksesoris: 'Aksesoris',
+  pulsa: 'Pulsa',
+  game: 'Game',
+  data: 'Paket Data',
+  token_pln: 'Token PLN',
+  lainnya: 'Lainnya',
+};
+const categoryLabel = computed(() => categoryLabelMap[category.value] || category.value);
+
 // Fields form
 const name = ref('');
 const category = ref<ProductCategory>('voucher');
@@ -392,6 +404,7 @@ const stockMin = ref<number>(2);
 
 const errorMessage = ref('');
 const isSubmitting = ref(false);
+const isInitialLoaded = ref(false);
 
 // Brand Combobox state
 const availableBrands = ref<Brand[]>([]);
@@ -431,8 +444,22 @@ function setBrandFeedback(msg: string, type: 'success' | 'error' = 'success') {
 }
 
 async function loadBrands() {
-  availableBrands.value = await brandService.listBrands();
+  availableBrands.value = await brandService.listBrandsForCategory(category.value);
 }
+
+watch(category, async (newCat, oldCat) => {
+  if (!isInitialLoaded.value) return;
+  await loadBrands();
+  if (oldCat && newCat !== oldCat) {
+    const existsInNewCategory = availableBrands.value.some(
+      (b) => b.name.toLowerCase() === operator.value.toLowerCase()
+    );
+    if (!existsInNewCategory) {
+      operator.value = '';
+      operatorInput.value = '';
+    }
+  }
+});
 
 function openBrandDropdown() {
   isBrandDropdownOpen.value = true;
@@ -461,10 +488,10 @@ async function handleAddBrand() {
   }
 
   try {
-    const newBrand = await brandService.addBrand(brandName);
+    const newBrand = await brandService.addBrand(brandName, category.value);
     await loadBrands();
     selectBrand(newBrand.name);
-    setBrandFeedback(`Brand "${newBrand.name}" berhasil ditambahkan!`, 'success');
+    setBrandFeedback(`Brand "${newBrand.name}" berhasil ditambahkan untuk ${categoryLabel.value}!`, 'success');
   } catch (err: unknown) {
     if (err instanceof Error) {
       setBrandFeedback(err.message, 'error');
@@ -541,6 +568,9 @@ async function loadCatalogPrefill() {
     hargaJual.value = entry.hargaJual ?? 0;
     stock.value = 0;
     stockMin.value = 2;
+    if (entry.operator && entry.category) {
+      await brandService.ensureBrand(entry.operator, entry.category);
+    }
   } catch (err: unknown) {
     errorMessage.value = err instanceof Error ? err.message : 'Gagal memuat katalog produk.';
   }
@@ -550,6 +580,9 @@ async function handleSubmit() {
   errorMessage.value = '';
   isSubmitting.value = true;
   try {
+    if (operator.value.trim()) {
+      await brandService.ensureBrand(operator.value.trim(), category.value);
+    }
     if (isEditMode.value) {
       await productService.updateProduct(
         productId.value,
@@ -668,9 +701,13 @@ async function handleActivateProduct() {
 }
 
 onMounted(async () => {
+  if (isEditMode.value) {
+    await loadProductData();
+  } else if (catalogSku.value) {
+    await loadCatalogPrefill();
+  }
   await loadBrands();
-  await loadProductData();
-  await loadCatalogPrefill();
+  isInitialLoaded.value = true;
   if (typeof document !== 'undefined') {
     document.addEventListener('click', handleClickOutside);
   }

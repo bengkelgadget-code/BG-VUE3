@@ -203,7 +203,9 @@ export interface AuditLog {
 export interface Brand {
   id: string; // uuid, PK
   name: string; // nama brand/operator
+  categories?: string[]; // kategori produk yang diasosiasikan (contoh: ['pulsa', 'data'] atau ['aksesoris'])
   createdAt: number; // epoch ms
+  updatedAt?: number; // epoch ms
 }
 
 export interface AppSettings {

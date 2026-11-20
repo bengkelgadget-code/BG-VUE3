@@ -3,6 +3,7 @@ import { db } from '../db/database';
 import type { Product, NewProduct, ProductCatalogEntry } from '../db/types';
 import { AppError } from '../core/errors';
 import { authService } from './authService';
+import { brandService } from './brandService';
 
 export class ProductService {
   private async checkAdminAccess(actorUserId: string): Promise<void> {
@@ -50,6 +51,11 @@ export class ProductService {
     };
 
     await db.products.add(newProd);
+
+    // Otomatis asosiasikan brand/operator dengan kategori produk ini
+    if (newProd.operator && newProd.category) {
+      await brandService.ensureBrand(newProd.operator, newProd.category);
+    }
 
     // Jejak audit
     await db.auditLogs.add({
@@ -168,6 +174,12 @@ export class ProductService {
       stock,
       updatedAt: now,
     });
+
+    const effectiveCategory = patch.category ?? existing.category;
+    const effectiveOperator = patch.operator !== undefined ? patch.operator : existing.operator;
+    if (effectiveOperator && effectiveCategory) {
+      await brandService.ensureBrand(effectiveOperator, effectiveCategory);
+    }
 
     // Audit perubahan modal atau harga jual
     if (patch.modal !== undefined && patch.modal !== existing.modal) {

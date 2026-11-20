@@ -55,6 +55,28 @@ export class BukuKonterDB extends Dexie {
     this.version(2).stores({
       brands: 'id, name',
     });
+    this.version(3).stores({
+      brands: 'id, name',
+    }).upgrade(async (tx) => {
+      const brandsTable = tx.table<Brand, string>('brands');
+      const productsTable = tx.table<Product, string>('products');
+      const allBrands = await brandsTable.toArray();
+      const allProducts = await productsTable.toArray();
+
+      const providerCats = ['pulsa', 'data', 'token_pln', 'voucher', 'perdana'];
+
+      for (const b of allBrands) {
+        if (Array.isArray(b.categories) && b.categories.length > 0) {
+          continue;
+        }
+        const matchingProducts = allProducts.filter(
+          (p) => p.operator && p.operator.trim().toLowerCase() === b.name.trim().toLowerCase()
+        );
+        const usedCats = Array.from(new Set(matchingProducts.map((p) => p.category).filter(Boolean)));
+        const categories = usedCats.length > 0 ? usedCats : [...providerCats];
+        await brandsTable.update(b.id, { categories });
+      }
+    });
   }
 }
 
