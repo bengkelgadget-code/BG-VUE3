@@ -1,11 +1,11 @@
 {
-  "bundle_checksum": "b72f53868b7c3a061302d3348e2cf333fc6e4c981b9b7800ebc2072c095169d8",
-  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b34/update.zip",
-  "bundle_version": "1795220101261",
-  "changelog": "Label detail tarik tunai + fallback rekening terima + perbaikan tutup shift",
-  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b34/buku-konter-v0.2.0-b34.apk",
+  "bundle_checksum": "",
+  "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b35/update.zip",
+  "bundle_version": "1795220800000",
+  "changelog": "Keraskan tes pulihkan akun (tanpa perubahan perilaku aplikasi)",
+  "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b35/buku-konter-v0.2.0-b35.apk",
   "force_update": false,
   "min_apk_version_code": 18,
-  "version_code": 34,
+  "version_code": 35,
   "version_name": "0.2.0"
 }

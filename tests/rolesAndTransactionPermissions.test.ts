@@ -15,6 +15,7 @@ import TransactionDetailView from '../src/views/TransactionDetailView.vue';
 import ShiftsView from '../src/views/ShiftsView.vue';
 import UsersView from '../src/views/UsersView.vue';
 import type { User, UserRole } from '../src/db/types';
+import { waitFor } from './helpers/testUtils';
 
 describe('b19: Roles, Permissions, Owner Visibility, Kepala Kasir, and Transaction Edit/Void', () => {
   let ownerUser: User;
@@ -444,22 +445,19 @@ describe('b19: Roles, Permissions, Owner Visibility, Kepala Kasir, and Transacti
       await flushPromises();
       const btnVerify = wrapper.find('[data-testid="btn-verify-owner-pin"]');
       await btnVerify.trigger('click');
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
-
-      expect(wrapper.find('[data-testid="approval-error"]').text()).toContain('PIN Owner salah');
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="approval-error"]').text()).toContain('PIN Owner salah');
+      });
       expect(wrapper.find('[data-testid="btn-edit-transaction"]').exists()).toBe(false);
 
       // PIN Owner benar -> disetujui, form terbuka SATU KALI
       await wrapper.find('[data-testid="input-owner-pin"]').setValue('123456');
       await wrapper.find('[data-testid="btn-verify-owner-pin"]').trigger('click');
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="owner-approved-badge"]').exists()).toBe(true);
+      });
 
       // Badge persetujuan owner tampil dan tombol Edit & Void terbuka
-      expect(wrapper.find('[data-testid="owner-approved-badge"]').exists()).toBe(true);
       expect(wrapper.find('[data-testid="btn-edit-transaction"]').exists()).toBe(true);
       expect(wrapper.find('[data-testid="btn-void-transaction"]').exists()).toBe(true);
     });

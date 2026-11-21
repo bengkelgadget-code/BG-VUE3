@@ -250,9 +250,9 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
           stubs: { AppScaffold: { template: '<div><slot /></div>' } },
         },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 50));
-      await flushPromises();
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
+      });
 
       // Pilih Voucher: dropdown hanya memuat voucher (tidak ada perdana atau aksesoris)
       const triggerBtn = wrapper.find('[data-testid="service-dropdown-trigger"]');
@@ -362,9 +362,9 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
           stubs: { AppScaffold: { template: '<div><slot /></div>' } },
         },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 50));
-      await flushPromises();
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
+      });
 
       // Pilih layanan ACC
       const triggerBtn = wrapper.find('[data-testid="service-dropdown-trigger"]');
@@ -440,9 +440,9 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
           stubs: { AppScaffold: { template: '<div><slot /></div>' } },
         },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 50));
-      await flushPromises();
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
+      });
 
       // Pilih pulsa
       const triggerBtn = wrapper.find('[data-testid="service-dropdown-trigger"]');
@@ -465,9 +465,10 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
 
       // Simpan tanpa isi no HP
       await (wrapper.vm as unknown as { handleSubmit: () => Promise<void> }).handleSubmit();
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 50));
-      await flushPromises();
+      await waitFor(async () => {
+        const txs = await db.transactions.toArray();
+        expect(txs).toHaveLength(1);
+      });
 
       const txs = await db.transactions.toArray();
       expect(txs).toHaveLength(1);
@@ -484,9 +485,9 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
           stubs: { AppScaffold: { template: '<div><slot /></div>' } },
         },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 50));
-      await flushPromises();
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
+      });
 
       const triggerBtn = wrapper.find('[data-testid="service-dropdown-trigger"]');
       await triggerBtn.trigger('click');
@@ -525,9 +526,9 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
           stubs: { AppScaffold: { template: '<div><slot /></div>' } },
         },
       });
-      await flushPromises();
-      await new Promise((r) => setTimeout(r, 50));
-      await flushPromises();
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
+      });
 
       // Form awal (layanan Transfer, nominal 0) -> footer TIDAK ada
       expect(wrapper.find('[data-testid="sticky-footer-bar"]').exists()).toBe(false);

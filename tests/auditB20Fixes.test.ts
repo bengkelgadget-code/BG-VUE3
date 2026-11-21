@@ -21,6 +21,7 @@ import MastersView from '../src/views/MastersView.vue';
 import ProductFormView from '../src/views/ProductFormView.vue';
 import TransactionDetailView from '../src/views/TransactionDetailView.vue';
 import type { User, Product } from '../src/db/types';
+import { waitFor } from './helpers/testUtils';
 
 describe('Audit b19 -> b20 Fixes Suite', () => {
   let ownerUser: User;
@@ -441,11 +442,9 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
           plugins: [router],
         },
       });
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
-
-      expect(wrapper.find('.btn-close-shift').exists()).toBe(true);
+      await waitFor(() => {
+        expect(wrapper.find('.btn-close-shift').exists()).toBe(true);
+      });
       wrapper.unmount();
     });
 
@@ -478,12 +477,10 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
           plugins: [router],
         },
       });
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
-
-      expect(wrapper.find('.btn-close').exists()).toBe(true);
-      expect(wrapper.find('.btn-tutup-full').exists()).toBe(true);
+      await waitFor(() => {
+        expect(wrapper.find('.btn-close').exists()).toBe(true);
+        expect(wrapper.find('.btn-tutup-full').exists()).toBe(true);
+      });
       wrapper.unmount();
     });
   });
@@ -537,13 +534,11 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
           plugins: [router],
         },
       });
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
-
       // Kepala Kasir berhak mengelola langsung
-      expect(wrapper.find('[data-testid="btn-edit-transaction"]').exists()).toBe(true);
-      expect(wrapper.find('[data-testid="btn-void-transaction"]').exists()).toBe(true);
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="btn-edit-transaction"]').exists()).toBe(true);
+        expect(wrapper.find('[data-testid="btn-void-transaction"]').exists()).toBe(true);
+      });
       wrapper.unmount();
     });
 
@@ -637,13 +632,11 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
           plugins: [router],
         },
       });
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
-
       // Klik tombol nonaktifkan awal
+      await waitFor(() => {
+        expect(wrapper.find('[data-testid="btn-deactivate-product"]').exists()).toBe(true);
+      });
       const btnDeactivate = wrapper.find('[data-testid="btn-deactivate-product"]');
-      expect(btnDeactivate.exists()).toBe(true);
       await btnDeactivate.trigger('click');
       await flushPromises();
 
@@ -709,18 +702,13 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
 
       // Klik tombol Aktifkan
       await btnActivate.trigger('click');
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
-
-      // Produk kini aktif kembali
-      const refreshedProd = await productService.getProduct(testProd.id);
-      expect(refreshedProd?.isActive).toBe(true);
-
-      // (b21-D) Umpan balik sukses tampil di halaman, bukan diam-diam
-      const successBanner = wrapper.find('[data-testid="activate-success"]');
-      expect(successBanner.exists()).toBe(true);
-      expect(successBanner.text()).toContain('berhasil diaktifkan');
+      await waitFor(async () => {
+        const refreshedProd = await productService.getProduct(testProd.id);
+        expect(refreshedProd?.isActive).toBe(true);
+        const successBanner = wrapper.find('[data-testid="activate-success"]');
+        expect(successBanner.exists()).toBe(true);
+        expect(successBanner.text()).toContain('berhasil diaktifkan');
+      });
       expect(wrapper.find('[data-testid="activate-error"]').exists()).toBe(false);
       wrapper.unmount();
     });
@@ -753,13 +741,11 @@ describe('Audit b19 -> b20 Fixes Suite', () => {
         .spyOn(productService, 'activateProduct')
         .mockRejectedValueOnce(new Error('Gagal mengaktifkan produk.'));
       await btnActivate.trigger('click');
-      await flushPromises();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await flushPromises();
-
-      const errorBanner = wrapper.find('[data-testid="activate-error"]');
-      expect(errorBanner.exists()).toBe(true);
-      expect(errorBanner.text()).toContain('Gagal mengaktifkan produk');
+      await waitFor(() => {
+        const errorBanner = wrapper.find('[data-testid="activate-error"]');
+        expect(errorBanner.exists()).toBe(true);
+        expect(errorBanner.text()).toContain('Gagal mengaktifkan produk');
+      });
       expect(wrapper.find('[data-testid="activate-success"]').exists()).toBe(false);
 
       // Produk tetap nonaktif

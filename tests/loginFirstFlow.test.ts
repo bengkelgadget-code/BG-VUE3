@@ -8,6 +8,7 @@ import { authService } from '../src/services/authService';
 import { supabaseSyncService } from '../src/services/supabaseSyncService';
 import LoginView from '../src/views/LoginView.vue';
 import { AppError } from '../src/core/errors';
+import { waitFor } from './helpers/testUtils';
 
 /**
  * Alur login-awal (b21): halaman pertama adalah Login, bukan SetupOwner.
@@ -72,9 +73,10 @@ describe('Login Awal & Pulihkan Akun (b21)', () => {
         plugins: [router],
       },
     });
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await flushPromises();
+
+    await waitFor(() => {
+      expect(wrapper.find('[data-testid="btn-restore-cloud"]').exists()).toBe(true);
+    });
 
     // Tetap di halaman Login — tidak dilempar ke /setup-owner
     expect(router.currentRoute.value.name).toBe('Login');
@@ -98,9 +100,10 @@ describe('Login Awal & Pulihkan Akun (b21)', () => {
         plugins: [router],
       },
     });
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await flushPromises();
+
+    await waitFor(() => {
+      expect(wrapper.find('[data-testid="btn-restore-cloud"]').exists()).toBe(true);
+    });
 
     // Simulasi pull dari cloud: satu akun Owner masuk ke Dexie lokal
     vi.spyOn(supabaseSyncService, 'pullAll').mockImplementation(async () => {
@@ -116,17 +119,19 @@ describe('Login Awal & Pulihkan Akun (b21)', () => {
     });
 
     await wrapper.find('[data-testid="btn-restore-cloud"]').trigger('click');
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await flushPromises();
 
-    const successBanner = wrapper.find('[data-testid="restore-success"]');
-    expect(successBanner.exists()).toBe(true);
-    expect(successBanner.text()).toContain('berhasil dipulihkan');
+    // Polling helper waitFor: tunggu sampai restore-success muncul dan memuat pesan sukses
+    await waitFor(() => {
+      const successBanner = wrapper.find('[data-testid="restore-success"]');
+      expect(successBanner.exists()).toBe(true);
+      expect(successBanner.text()).toContain('berhasil dipulihkan');
+    });
 
     // Form login kini tampil dengan akun yang dipulihkan
-    expect(wrapper.find('.login-form').exists()).toBe(true);
-    expect(wrapper.html()).toContain('Budi Owner');
+    await waitFor(() => {
+      expect(wrapper.find('.login-form').exists()).toBe(true);
+      expect(wrapper.html()).toContain('Budi Owner');
+    });
     wrapper.unmount();
   });
 
@@ -139,22 +144,22 @@ describe('Login Awal & Pulihkan Akun (b21)', () => {
         plugins: [router],
       },
     });
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await flushPromises();
+
+    await waitFor(() => {
+      expect(wrapper.find('[data-testid="btn-restore-cloud"]').exists()).toBe(true);
+    });
 
     vi.spyOn(supabaseSyncService, 'pullAll').mockRejectedValue(
       new AppError('Gagal sinkronisasi: offline')
     );
 
     await wrapper.find('[data-testid="btn-restore-cloud"]').trigger('click');
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await flushPromises();
 
-    const errorBanner = wrapper.find('[data-testid="restore-error"]');
-    expect(errorBanner.exists()).toBe(true);
-    expect(errorBanner.text()).toContain('offline');
+    await waitFor(() => {
+      const errorBanner = wrapper.find('[data-testid="restore-error"]');
+      expect(errorBanner.exists()).toBe(true);
+      expect(errorBanner.text()).toContain('offline');
+    });
     expect(wrapper.find('.login-form').exists()).toBe(false);
     expect(router.currentRoute.value.name).toBe('Login');
     wrapper.unmount();
@@ -169,20 +174,20 @@ describe('Login Awal & Pulihkan Akun (b21)', () => {
         plugins: [router],
       },
     });
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await flushPromises();
+
+    await waitFor(() => {
+      expect(wrapper.find('[data-testid="btn-restore-cloud"]').exists()).toBe(true);
+    });
 
     vi.spyOn(supabaseSyncService, 'pullAll').mockResolvedValue({ pulled: 0, at: Date.now() });
 
     await wrapper.find('[data-testid="btn-restore-cloud"]').trigger('click');
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await flushPromises();
 
-    const errorBanner = wrapper.find('[data-testid="restore-error"]');
-    expect(errorBanner.exists()).toBe(true);
-    expect(errorBanner.text()).toContain('Tidak ada data akun di cloud');
+    await waitFor(() => {
+      const errorBanner = wrapper.find('[data-testid="restore-error"]');
+      expect(errorBanner.exists()).toBe(true);
+      expect(errorBanner.text()).toContain('Tidak ada data akun di cloud');
+    });
     expect(wrapper.find('[data-testid="link-create-account"]').exists()).toBe(true);
     wrapper.unmount();
   });
