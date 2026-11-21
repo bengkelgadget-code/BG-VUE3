@@ -83,6 +83,7 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import AppScaffold from '../components/AppScaffold.vue';
+import { db } from '../db/database';
 import { shiftService } from '../services/shiftService';
 import { accountService } from '../services/accountService';
 import { useAuthStore } from '../stores/authStore';
@@ -159,8 +160,8 @@ async function handleSubmit() {
   try {
     await shiftService.closeShift({
       shiftId: activeShift.value.id,
-      hitungFisik: hitungFisik.value,
-      penjelasanSelisih: penjelasanSelisih.value,
+      hitungFisik: JSON.parse(JSON.stringify(hitungFisik.value)),
+      penjelasanSelisih: JSON.parse(JSON.stringify(penjelasanSelisih.value)),
       actorUserId: authStore.currentUser.id,
     });
     if (settingsStore.cloudAutoSync !== false && supabaseSyncService.isConfigured()) {
@@ -168,10 +169,19 @@ async function handleSubmit() {
     }
     router.replace('/shifts');
   } catch (err: unknown) {
+    console.error('Gagal menutup shift:', err);
+    if (activeShift.value) {
+      const refreshed = await db.shifts.get(activeShift.value.id);
+      if (refreshed?.status === 'closed') {
+        errorMessage.value = 'Shift sudah tertutup.';
+        router.replace('/shifts');
+        return;
+      }
+    }
     if (err instanceof AppError) {
       errorMessage.value = err.message;
     } else {
-      errorMessage.value = 'Gagal menutup shift. Periksa kembali penjelasan selisih.';
+      errorMessage.value = `Gagal menutup shift: ${err instanceof Error ? err.message : String(err)}`;
     }
   } finally {
     isSubmitting.value = false;

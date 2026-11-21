@@ -54,15 +54,26 @@
           <span class="d-val text-bold">{{ customerName }}</span>
         </div>
 
-        <div v-if="sourceAccountName" class="detail-row">
-          <span class="d-label">Sumber Dana</span>
-          <span class="d-val">{{ sourceAccountName }}</span>
-        </div>
-
-        <div v-if="paymentAccountName" class="detail-row">
-          <span class="d-label">Diterima Di</span>
-          <span class="d-val">{{ paymentAccountName }}</span>
-        </div>
+        <template v-if="transaction.layanan === 'tarik_tunai'">
+          <div v-if="sourceAccountName" class="detail-row">
+            <span class="d-label">Rekening Terima Transfer</span>
+            <span class="d-val">{{ sourceAccountName }}</span>
+          </div>
+          <div v-if="paymentAccountName" class="detail-row">
+            <span class="d-label">Sumber Dana</span>
+            <span class="d-val">{{ paymentAccountName }}</span>
+          </div>
+        </template>
+        <template v-else>
+          <div v-if="sourceAccountName" class="detail-row">
+            <span class="d-label">Sumber Dana</span>
+            <span class="d-val">{{ sourceAccountName }}</span>
+          </div>
+          <div v-if="paymentAccountName" class="detail-row">
+            <span class="d-label">Diterima Di</span>
+            <span class="d-val">{{ paymentAccountName }}</span>
+          </div>
+        </template>
 
         <div class="detail-row">
           <span class="d-label">Petugas Kasir</span>

@@ -112,13 +112,34 @@ export class ShiftService {
 
     const now = Date.now();
 
+    // Pastikan seluruh objek adalah plain data murni (bukan Proxy / non-clonable) agar tidak memicu DataCloneError di IndexedDB
+    const cleanHitungFisik: Record<string, number> = {};
+    for (const [accId, val] of Object.entries(params.hitungFisik || {})) {
+      cleanHitungFisik[String(accId)] = Number(val) || 0;
+    }
+
+    const cleanPenjelasanSelisih: Record<string, string> = {};
+    for (const [accId, val] of Object.entries(params.penjelasanSelisih || {})) {
+      cleanPenjelasanSelisih[String(accId)] = String(val ?? '');
+    }
+
+    const cleanSaldoAkhirSistem: Record<string, number> = {};
+    for (const [accId, val] of Object.entries(saldoAkhirSistem || {})) {
+      cleanSaldoAkhirSistem[String(accId)] = Number(val) || 0;
+    }
+
+    const cleanSelisih: Record<string, number> = {};
+    for (const [accId, val] of Object.entries(selisih || {})) {
+      cleanSelisih[String(accId)] = Number(val) || 0;
+    }
+
     await db.transaction('rw', [db.shifts, db.auditLogs], async () => {
       await db.shifts.update(params.shiftId, {
         closedAt: now,
-        saldoAkhirSistem,
-        hitungFisik: params.hitungFisik,
-        selisih,
-        penjelasanSelisih: params.penjelasanSelisih,
+        saldoAkhirSistem: cleanSaldoAkhirSistem,
+        hitungFisik: cleanHitungFisik,
+        selisih: cleanSelisih,
+        penjelasanSelisih: cleanPenjelasanSelisih,
         status: 'closed',
       });
 
@@ -128,12 +149,45 @@ export class ShiftService {
         action: 'shift_close',
         entityType: 'shift',
         entityId: params.shiftId,
-        detail: JSON.stringify({ selisih }),
+        detail: JSON.stringify({ selisih: cleanSelisih }),
         createdAt: now,
       });
     });
 
-    return await this.getSummary(params.shiftId);
+    try {
+      return await this.getSummary(params.shiftId);
+    } catch (err: unknown) {
+      console.error('getSummary error after closeShift commit, using fallback summary:', err);
+      let totalTransaksi = 0;
+      let totalLaba = 0;
+      try {
+        const txs = await db.transactions
+          .where('shiftId')
+          .equals(params.shiftId)
+          .filter((t) => t.status !== 'void')
+          .toArray();
+        totalTransaksi = txs.length;
+        for (const t of txs) {
+          totalLaba += t.fee || 0;
+          const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
+          for (const item of items) {
+            totalLaba += ((item.hargaJualSnapshot || 0) - (item.modalSnapshot || 0)) * (item.qty || 1);
+          }
+        }
+      } catch (innerErr) {
+        console.error('Failed to compute fallback inline totals:', innerErr);
+      }
+
+      return {
+        shiftId: params.shiftId,
+        saldoAwalSistem: shift.saldoAwalSistem || {},
+        saldoAkhirSistem,
+        hitungFisik: params.hitungFisik,
+        selisih,
+        totalTransaksi,
+        totalLaba,
+      };
+    }
   }
 
   /**

@@ -577,10 +577,6 @@ const tarikTunaiBankOptions = computed(() =>
     }))
 );
 
-const availableTarikTunaiSourceAccounts = computed(() =>
-  activeAccounts.value.filter((a) => a.type === 'kas' || a.type === 'bank')
-);
-
 const serverAccounts = computed(() =>
   activeAccounts.value.filter((a) => a.type === 'server_pulsa')
 );
@@ -740,12 +736,12 @@ onMounted(async () => {
     sourceAccountId.value = defaultServer.id;
   }
   if (layanan.value === 'tarik_tunai') {
+    const defaultKas = activeAccounts.value.find((a) => a.type === 'kas');
+    paymentAccountId.value = defaultKas ? defaultKas.id : '';
     const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
-    if (!curAcc || curAcc.type === 'ewallet') {
-      const fallback = availableTarikTunaiSourceAccounts.value[0];
-      if (fallback) {
-        sourceAccountId.value = fallback.id;
-      }
+    if (!curAcc || curAcc.type !== 'bank') {
+      const defaultBankAcc = activeAccounts.value.find((a) => a.type === 'bank');
+      sourceAccountId.value = defaultBankAcc ? defaultBankAcc.id : '';
     }
   }
 
