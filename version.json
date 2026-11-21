@@ -1,7 +1,7 @@
 {
-  "bundle_checksum": "",
+  "bundle_checksum": "b72f53868b7c3a061302d3348e2cf333fc6e4c981b9b7800ebc2072c095169d8",
   "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b34/update.zip",
-  "bundle_version": "1795188800000",
+  "bundle_version": "1795220101261",
   "changelog": "Label detail tarik tunai + fallback rekening terima + perbaikan tutup shift",
   "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b34/buku-konter-v0.2.0-b34.apk",
   "force_update": false,
