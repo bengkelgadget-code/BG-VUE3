@@ -1,5 +1,10 @@
 <template>
-  <div ref="rootRef" class="searchable-select-wrapper" :class="{ disabled, open: isOpen }">
+  <div
+    ref="rootRef"
+    class="searchable-select-wrapper"
+    :class="{ disabled, open: isOpen }"
+    @focusout="onWrapperFocusOut"
+  >
     <!-- Hidden native select for validation & test suite compatibility -->
     <select
       ref="nativeSelectRef"
@@ -94,13 +99,20 @@
         <input
           ref="searchInputRef"
           v-model="searchQuery"
-          type="text"
+          type="search"
+          enterkeyhint="search"
           class="search-box-input"
           :placeholder="searchPlaceholder || 'Cari...'"
           :data-testid="searchTestId || (dataTestid ? `${dataTestid}-search` : 'searchable-select-input')"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
           @keydown="onSearchInputKeyDown"
           @keyup="onSearchInputKeyUp"
           @beforeinput="onSearchInputBeforeInput"
+          @search="onSearchInputSearch"
+          @compositionend="onSearchInputCompositionEnd"
         />
         <button
           v-if="searchQuery"
@@ -342,6 +354,7 @@ function advanceFocusToNextField(triggerEl: HTMLElement) {
 
 function selectOption(opt: SelectOption, advanceFocus = false) {
   if (opt.disabled) return;
+  lastEnterHandledTimestamp = Date.now();
   emit('update:modelValue', opt.value);
   emit('change', opt.value);
   closeDropdown();
@@ -367,7 +380,12 @@ function selectHighlighted(advanceFocus = true) {
   }
 }
 
+let lastKeyCode229Timestamp = 0;
+
 function onSearchInputKeyDown(e: KeyboardEvent) {
+  if (e.keyCode === 229 || e.which === 229) {
+    lastKeyCode229Timestamp = Date.now();
+  }
   if (e.key === 'ArrowDown') {
     e.preventDefault();
     moveHighlight(1);
@@ -376,6 +394,7 @@ function onSearchInputKeyDown(e: KeyboardEvent) {
     moveHighlight(-1);
   } else if (isEnterKey(e)) {
     e.preventDefault();
+    if (Date.now() - lastEnterHandledTimestamp < 300) return;
     lastEnterHandledTimestamp = Date.now();
     selectHighlighted(true);
   } else if (e.key === 'Tab') {
@@ -406,9 +425,66 @@ function onSearchInputBeforeInput(e: Event) {
   }
 }
 
+function onSearchInputSearch(e: Event) {
+  e.preventDefault();
+  if (Date.now() - lastEnterHandledTimestamp < 300) return;
+  lastEnterHandledTimestamp = Date.now();
+  selectHighlighted(true);
+}
+
+function onSearchInputCompositionEnd() {
+  if (isOpen.value && filteredOptions.value.length > 0) {
+    if (Date.now() - lastKeyCode229Timestamp < 150) {
+      if (Date.now() - lastEnterHandledTimestamp < 300) return;
+      lastEnterHandledTimestamp = Date.now();
+      selectHighlighted(true);
+    }
+  }
+}
+
+function onWrapperFocusOut(e: FocusEvent) {
+  if (!isOpen.value) return;
+
+  const related = e.relatedTarget as HTMLElement | null;
+  // Jika relatedTarget null (mis. tap layar sentuh pada elemen non-fokus, tap opsi baris, atau tap luar),
+  // JANGAN pilih lewat blur! Biarkan @click baris opsi yang memilih, atau handleClickOutside yang menutup.
+  if (!related) return;
+
+  // Jika relatedTarget masih berada di dalam wrapper ini (mis. pindah antara search input dan trigger atau button internal), abaikan
+  if (rootRef.value && rootRef.value.contains(related)) return;
+
+  // Cek apakah relatedTarget berada di dalam form / container yang sama
+  const form = rootRef.value?.closest('form') || rootRef.value?.closest('.form-container') || rootRef.value?.closest('.app-main');
+  if (form && form.contains(related)) {
+    // Pastikan relatedTarget berada SETELAH dropdown ini dalam urutan dokumen
+    const followingBit = typeof Node !== 'undefined' ? Node.DOCUMENT_POSITION_FOLLOWING : 4;
+    const isAfter = rootRef.value ? Boolean(rootRef.value.compareDocumentPosition(related) & followingBit) : true;
+
+    if (isAfter) {
+      if (filteredOptions.value.length > 0) {
+        if (Date.now() - lastEnterHandledTimestamp < 300) {
+          closeDropdown();
+          return;
+        }
+        lastEnterHandledTimestamp = Date.now();
+        // PILIH opsi ter-highlight / pertama dan TUTUP (tanpa memajukan fokus lagi, karena fokus sudah berada di relatedTarget)
+        selectHighlighted(false);
+      } else {
+        closeDropdown();
+      }
+      return;
+    }
+  }
+
+  // Jika fokus pindah ke luar form atau bukan ke field setelahnya, tutup dropdown tanpa memilih
+  closeDropdown();
+}
+
 function onSearchInputTab(e: KeyboardEvent) {
   if (filteredOptions.value.length > 0) {
     e.preventDefault();
+    if (Date.now() - lastEnterHandledTimestamp < 300) return;
+    lastEnterHandledTimestamp = Date.now();
     let opt = filteredOptions.value[highlightedIndex.value];
     if (!opt) {
       opt = filteredOptions.value[0];
@@ -626,6 +702,15 @@ defineExpose({
   color: var(--text-main);
   font-size: 13px;
   outline: none;
+}
+
+.search-box-input::-webkit-search-decoration,
+.search-box-input::-webkit-search-cancel-button,
+.search-box-input::-webkit-search-results-button,
+.search-box-input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
 }
 
 .search-box-input:focus {

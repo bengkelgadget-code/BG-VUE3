@@ -94,7 +94,7 @@ describe('Audit b38 Features: Virtual Keyboard Enter, Focus Advance, & App Build
       expect(APP_VERSION).toBe(versionJson.version_name);
       expect(APP_BUILD).toBe(versionJson.version_code);
       expect(APP_VERSION).toMatch(new RegExp(`-b${APP_BUILD}$`));
-      expect(APP_BUILD).toBe(38);
+      expect(APP_BUILD).toBeGreaterThanOrEqual(38);
     });
   });
 

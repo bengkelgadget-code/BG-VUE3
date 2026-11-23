@@ -113,8 +113,10 @@ export function handleFormKeyDown(e: KeyboardEvent, formEl?: HTMLElement | null)
   // Biarkan Enter di textarea berjalan normal
   if (target.tagName === 'TEXTAREA') return;
 
-  // Biarkan SearchableSelect input menangani Enter secara internal
+  // Biarkan SearchableSelect input & trigger menangani Enter secara internal
   if (target.classList.contains('search-box-input')) return;
+  if (target.classList.contains('searchable-select-trigger')) return;
+  if (target.closest('.searchable-select-panel')) return;
 
   // Jika tombol submit sudah difokuskan, biarkan form submit berjalan normal
   if (
@@ -145,6 +147,8 @@ export function handleFormKeyUp(e: KeyboardEvent, formEl?: HTMLElement | null): 
 
   if (target.tagName === 'TEXTAREA') return;
   if (target.classList.contains('search-box-input')) return;
+  if (target.classList.contains('searchable-select-trigger')) return;
+  if (target.closest('.searchable-select-panel')) return;
   if (
     target.tagName === 'BUTTON' &&
     (target.getAttribute('type') === 'submit' ||
