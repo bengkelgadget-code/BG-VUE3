@@ -1,7 +1,7 @@
 {
-  "bundle_checksum": "",
+  "bundle_checksum": "313789111e428db44ad013513aabf36aac8dff9ae51c1855b4fe6c5b1e85c637",
   "bundle_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b36/update.zip",
-  "bundle_version": "1795221300000",
+  "bundle_version": "1795407173358",
   "changelog": "Paket data via aplikasi provider + margin manual; popup simpan tidak menutupi field; filter tanggal di riwayat",
   "download_url": "https://github.com/bengkelgadget-code/BG-VUE3/releases/download/v0.2.0-b36/buku-konter-v0.2.0-b36.apk",
   "force_update": false,
