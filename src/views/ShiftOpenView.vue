@@ -10,7 +10,7 @@
         Hitung uang tunai fisik yang ada di laci kas saat ini sebelum memulai shift pelayanan.
       </p>
 
-      <form class="shift-form" @submit.prevent="handleSubmit" @keydown.enter="handleFormKeyDown($event, $el)">
+      <form class="shift-form" @submit.prevent="handleSubmit" @keydown="handleFormKeyDown($event, $el)" @keyup="handleFormKeyUp($event, $el)">
         <div v-if="errorMessage" class="error-banner">
           {{ errorMessage }}
         </div>
@@ -67,7 +67,7 @@ import { shiftService } from '../services/shiftService';
 import { useAuthStore } from '../stores/authStore';
 import { parseRupiah } from '../utils/format';
 import { AppError } from '../core/errors';
-import { handleFormKeyDown } from '../utils/formNavigation';
+import { handleFormKeyDown, handleFormKeyUp } from '../utils/formNavigation';
 
 const router = useRouter();
 const authStore = useAuthStore();

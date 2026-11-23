@@ -6,7 +6,7 @@
         <h2 class="page-title">Tambah Akun Saldo</h2>
       </div>
 
-      <form class="account-form" @submit.prevent="handleSubmit" @keydown.enter="handleFormKeyDown($event, $el)">
+      <form class="account-form" @submit.prevent="handleSubmit" @keydown="handleFormKeyDown($event, $el)" @keyup="handleFormKeyUp($event, $el)">
         <div v-if="errorMessage" class="error-banner">
           {{ errorMessage }}
         </div>
@@ -89,7 +89,7 @@ import { accountService } from '../services/accountService';
 import { parseRupiah } from '../utils/format';
 import { AppError } from '../core/errors';
 import SearchableSelect from '../components/SearchableSelect.vue';
-import { handleFormKeyDown } from '../utils/formNavigation';
+import { handleFormKeyDown, handleFormKeyUp } from '../utils/formNavigation';
 
 const router = useRouter();
 

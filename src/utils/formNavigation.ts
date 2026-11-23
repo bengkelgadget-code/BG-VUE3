@@ -1,8 +1,19 @@
 /**
- * Form Navigation Utility (b37)
+ * Form Navigation Utility (b37, b38)
  * Memastikan Enter / Tab berpindah ke field berikutnya di semua form dan semua role.
  * Field disabled / hidden dilewati; field terakhir Enter fokus ke tombol submit (bukan auto-submit).
+ * Mendukung keyboard fisik & keyboard virtual Android (Unidentified, keyCode 13, keyup fallback).
  */
+
+export function isEnterKey(e: KeyboardEvent): boolean {
+  return (
+    e.key === 'Enter' ||
+    e.code === 'Enter' ||
+    e.code === 'NumpadEnter' ||
+    e.keyCode === 13 ||
+    e.which === 13
+  );
+}
 
 export function getFocusableFormElements(container: HTMLElement): HTMLElement[] {
   const selector = [
@@ -88,9 +99,11 @@ export function focusNextFormField(currentEl: HTMLElement, container?: HTMLEleme
   return false;
 }
 
+let lastFormEnterTimestamp = 0;
+
 export function handleFormKeyDown(e: KeyboardEvent, formEl?: HTMLElement | null): void {
-  if (e.key !== 'Enter') return;
-  const target = e.target as HTMLElement;
+  if (!isEnterKey(e)) return;
+  const target = (e.target || e.currentTarget) as HTMLElement | null;
   if (!target) return;
 
   // Biarkan Enter di textarea berjalan normal
@@ -100,14 +113,46 @@ export function handleFormKeyDown(e: KeyboardEvent, formEl?: HTMLElement | null)
   if (target.classList.contains('search-box-input')) return;
 
   // Jika tombol submit sudah difokuskan, biarkan form submit berjalan normal
-  if (target.tagName === 'BUTTON' && (target.getAttribute('type') === 'submit' || target.classList.contains('btn-submit-tx') || target.classList.contains('btn-submit'))) {
+  if (
+    target.tagName === 'BUTTON' &&
+    (target.getAttribute('type') === 'submit' ||
+      target.classList.contains('btn-submit-tx') ||
+      target.classList.contains('btn-submit'))
+  ) {
     return;
   }
 
   // Cegah submit form default pada input
   e.preventDefault();
+  lastFormEnterTimestamp = Date.now();
 
   // Majukan fokus ke field berikutnya
+  const container = formEl || target.closest('form') || (target.closest('.app-main') as HTMLElement);
+  focusNextFormField(target, container);
+}
+
+export function handleFormKeyUp(e: KeyboardEvent, formEl?: HTMLElement | null): void {
+  if (!isEnterKey(e)) return;
+  // Jika sudah ditangani oleh keydown dalam 300ms terakhir, abaikan keyup duplikat
+  if (Date.now() - lastFormEnterTimestamp < 300) return;
+
+  const target = (e.target || e.currentTarget) as HTMLElement | null;
+  if (!target) return;
+
+  if (target.tagName === 'TEXTAREA') return;
+  if (target.classList.contains('search-box-input')) return;
+  if (
+    target.tagName === 'BUTTON' &&
+    (target.getAttribute('type') === 'submit' ||
+      target.classList.contains('btn-submit-tx') ||
+      target.classList.contains('btn-submit'))
+  ) {
+    return;
+  }
+
+  e.preventDefault();
+  lastFormEnterTimestamp = Date.now();
+
   const container = formEl || target.closest('form') || (target.closest('.app-main') as HTMLElement);
   focusNextFormField(target, container);
 }

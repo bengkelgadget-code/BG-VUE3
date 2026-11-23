@@ -24,7 +24,8 @@
         @submit.prevent="handleSubmit"
         @focusin="onFormFocusIn"
         @focusout="onFormFocusOut"
-        @keydown.enter="handleFormKeyDown($event, $el)"
+        @keydown="handleFormKeyDown($event, $el)"
+        @keyup="handleFormKeyUp($event, $el)"
       >
         <!-- Error Banner Form -->
         <div v-if="errorMessage" class="error-banner">
@@ -473,7 +474,7 @@ import { formatRupiah, formatTanggalWita } from '../utils/format';
 import { getTodayWitaString, parseWitaDateToEpoch } from '../utils/datePeriod';
 import { db } from '../db/database';
 import { feeRuleService } from '../services/feeRuleService';
-import { focusNextFormField, handleFormKeyDown } from '../utils/formNavigation';
+import { focusNextFormField, handleFormKeyDown, handleFormKeyUp } from '../utils/formNavigation';
 import { transactionService } from '../services/transactionService';
 import type { Account, Product, Customer, AdminFeeRule, ProductCatalogEntry, ProductCategory } from '../db/types';
 import { AppError } from '../core/errors';
@@ -889,7 +890,6 @@ onUnmounted(() => {
 function onSelectOption(code: string | number) {
   const strCode = String(code);
   selectService(strCode);
-  focusNextFieldAfterService(strCode);
 }
 
 interface FocusableElement {
@@ -906,36 +906,15 @@ function focusElement(el: HTMLElement | FocusableElement | null | undefined) {
       el.focusNominal();
     } else if (typeof el.focus === 'function') {
       el.focus();
-    } else if ('$el' in el && el.$el && typeof el.$el.focus === 'function') {
-      el.$el.focus();
     } else if ('$el' in el && el.$el) {
-      const input = el.$el.querySelector<HTMLElement>('input, select, textarea, button');
+      const input = el.$el.querySelector<HTMLElement>(
+        'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), .searchable-select-trigger:not([disabled])'
+      );
       if (input && typeof input.focus === 'function') {
         input.focus();
+      } else if (typeof el.$el.focus === 'function') {
+        el.$el.focus();
       }
-    }
-  });
-}
-
-function focusNextFieldAfterService(code: string) {
-  nextTick(() => {
-    const def = getLayananDef(code);
-    if (code === 'jasa_transfer') {
-      focusElement(referenceNoRef.value);
-    } else if (code === 'tarik_tunai') {
-      focusElement(paymentAccountRef.value);
-    } else if (['transfer', 'topup_ewallet', 'ppob'].includes(code)) {
-      focusElement(sourceAccountRef.value);
-    } else if (def?.group === 'penjualan' && !def.needsSourceAccount) {
-      focusElement(productSelectRef.value);
-    } else if (def?.group === 'penjualan' && def.needsSourceAccount) {
-      if (sourceAccountId.value) {
-        focusElement(referenceNoRef.value);
-      } else {
-        focusElement(sourceAccountRef.value);
-      }
-    } else if (code === 'operasional') {
-      focusElement(sourceAccountRef.value);
     }
   });
 }

@@ -14,7 +14,7 @@
         <p>Tidak ada shift aktif yang sedang berjalan.</p>
       </div>
 
-      <form v-else class="close-form" @submit.prevent="handleSubmit" @keydown.enter="handleFormKeyDown($event, $el)">
+      <form v-else class="close-form" @submit.prevent="handleSubmit" @keydown="handleFormKeyDown($event, $el)" @keyup="handleFormKeyUp($event, $el)">
         <div v-if="errorMessage" class="error-banner">
           {{ errorMessage }}
         </div>
@@ -92,7 +92,7 @@ import { supabaseSyncService } from '../services/supabaseSyncService';
 import { formatRupiah, parseRupiah } from '../utils/format';
 import type { Shift, Account } from '../db/types';
 import { AppError } from '../core/errors';
-import { handleFormKeyDown } from '../utils/formNavigation';
+import { handleFormKeyDown, handleFormKeyUp } from '../utils/formNavigation';
 
 const router = useRouter();
 const authStore = useAuthStore();

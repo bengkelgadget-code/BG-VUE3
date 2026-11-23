@@ -207,7 +207,7 @@
           Aplikasi mendukung pembaruan live (OTA) otomatis: perbaikan tampilan &amp; fitur kecil diunduh dan diterapkan sendiri tanpa instal ulang APK. Bila ada perubahan besar yang butuh APK baru, aplikasi akan memberi tahu dan mengarahkan ke halaman unduhan.
         </p>
         <div class="version-row">
-          <div class="app-version-badge">Versi {{ APP_VERSION }} (Fase 2 & 3)</div>
+          <div class="app-version-badge">Versi {{ APP_VERSION }} (Build {{ APP_BUILD }})</div>
           <button
             type="button"
             class="btn-check-update"
@@ -253,7 +253,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { backupService } from '../services/backupService';
 import { authService } from '../services/authService';
 import { liveUpdateService, type ApkUpdate } from '../services/liveUpdateService';
-import { APP_VERSION } from '../core/constants';
+import { APP_VERSION, APP_BUILD } from '../core/constants';
 import { supabaseSyncService } from '../services/supabaseSyncService';
 import { formatTanggalWita } from '../utils/format';
 
@@ -272,18 +272,19 @@ async function handleCheckUpdate() {
     const update = await liveUpdateService.checkForUpdate();
     isChecking = false;
     if (update.kind === 'bundle') {
-      showSuccess('Mengunduh pembaruan...');
+      showSuccess(`Pembaruan tersedia! Terpasang: ${APP_VERSION} (Build ${APP_BUILD}) • Tersedia: ${update.versionName} (Build ${update.versionCode}). Mengunduh...`);
       const bundle = await liveUpdateService.downloadBundle(update);
       liveUpdateService.setPendingBundle({ bundle, version: update.bundleVersion });
-      showSuccess('Pembaruan siap, akan diterapkan di Beranda.');
+      showSuccess(`Pembaruan siap, akan diterapkan di Beranda. (Tersedia: ${update.versionName} Build ${update.versionCode})`);
     } else if (update.kind === 'pending') {
       showSuccess('Pembaruan siap, akan diterapkan di Beranda.');
     } else if (update.kind === 'updating') {
       showSuccess('Pembaruan sedang diproses...');
     } else if (update.kind === 'apk') {
       availableUpdate.value = update;
+      showSuccess(`Pembaruan APK tersedia! Terpasang: ${APP_VERSION} (Build ${APP_BUILD}) • Tersedia: ${update.versionName} (Build ${update.versionCode}).`);
     } else {
-      showSuccess(`Aplikasi sudah versi terbaru (v${APP_VERSION}).`);
+      showSuccess(`Sudah versi terbaru: ${APP_VERSION} (Build ${APP_BUILD})`);
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

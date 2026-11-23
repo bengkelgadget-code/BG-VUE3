@@ -39,7 +39,8 @@
         @submit.prevent="handleSubmit"
         @focusin="onFormFocusIn"
         @focusout="onFormFocusOut"
-        @keydown.enter="handleFormKeyDown($event, $el)"
+        @keydown="handleFormKeyDown($event, $el)"
+        @keyup="handleFormKeyUp($event, $el)"
       >
         <!-- 1. PINDAH DANA -->
         <div v-if="selectedTab === 'pindah_dana'" class="form-card">
@@ -300,7 +301,7 @@ import { AppError } from '../core/errors';
 import { ownerLayanan } from '../core/layanan';
 import type { Account, Product } from '../db/types';
 import SearchableSelect from '../components/SearchableSelect.vue';
-import { handleFormKeyDown } from '../utils/formNavigation';
+import { handleFormKeyDown, handleFormKeyUp } from '../utils/formNavigation';
 
 const router = useRouter();
 const authStore = useAuthStore();

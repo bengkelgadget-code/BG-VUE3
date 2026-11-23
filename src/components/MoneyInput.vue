@@ -16,7 +16,8 @@
             :placeholder="placeholder || '0'"
             :disabled="disabled"
             @input="onNominalInput"
-            @keydown.enter.prevent="onNominalEnter"
+            @keydown="onNominalKeyDown"
+            @keyup="onNominalKeyUp"
           />
         </div>
       </div>
@@ -39,7 +40,8 @@
             placeholder="0"
             :disabled="disabled"
             @input="onFeeInput"
-            @keydown.enter.prevent="onAdminEnter"
+            @keydown="onAdminKeyDown"
+            @keyup="onAdminKeyUp"
           />
         </div>
       </div>
@@ -77,6 +79,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { parseRupiah } from '../utils/format';
+import { isEnterKey } from '../utils/formNavigation';
 
 const props = withDefaults(
   defineProps<{
@@ -153,8 +156,46 @@ function onNominalInput(event: Event) {
   emit('update:modelValue', parsed);
 }
 
+let lastNominalEnterTimestamp = 0;
+
+function onNominalKeyDown(e: KeyboardEvent) {
+  if (isEnterKey(e)) {
+    e.preventDefault();
+    lastNominalEnterTimestamp = Date.now();
+    onNominalEnter();
+  }
+}
+
+function onNominalKeyUp(e: KeyboardEvent) {
+  if (isEnterKey(e)) {
+    if (Date.now() - lastNominalEnterTimestamp < 300) return;
+    e.preventDefault();
+    lastNominalEnterTimestamp = Date.now();
+    onNominalEnter();
+  }
+}
+
 function onNominalEnter() {
   emit('enter');
+}
+
+let lastAdminEnterTimestamp = 0;
+
+function onAdminKeyDown(e: KeyboardEvent) {
+  if (isEnterKey(e)) {
+    e.preventDefault();
+    lastAdminEnterTimestamp = Date.now();
+    onAdminEnter();
+  }
+}
+
+function onAdminKeyUp(e: KeyboardEvent) {
+  if (isEnterKey(e)) {
+    if (Date.now() - lastAdminEnterTimestamp < 300) return;
+    e.preventDefault();
+    lastAdminEnterTimestamp = Date.now();
+    onAdminEnter();
+  }
 }
 
 function onFeeInput(event: Event) {

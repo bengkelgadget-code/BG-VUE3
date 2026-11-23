@@ -6,7 +6,7 @@
         <h2 class="page-title">{{ isEditMode ? 'Edit Produk Master' : 'Tambah Produk Master' }}</h2>
       </div>
 
-      <form class="product-form" @submit.prevent="handleSubmit" @keydown.enter="handleFormKeyDown($event, $el)">
+      <form class="product-form" @submit.prevent="handleSubmit" @keydown="handleFormKeyDown($event, $el)" @keyup="handleFormKeyUp($event, $el)">
         <div v-if="errorMessage" class="error-banner">
           {{ errorMessage }}
         </div>
@@ -301,7 +301,7 @@ import { AppError } from '../core/errors';
 import { db } from '../db/database';
 import type { Brand, ProductCategory } from '../db/types';
 import SearchableSelect, { type SelectOption } from '../components/SearchableSelect.vue';
-import { handleFormKeyDown } from '../utils/formNavigation';
+import { handleFormKeyDown, handleFormKeyUp } from '../utils/formNavigation';
 
 const route = useRoute();
 const router = useRouter();

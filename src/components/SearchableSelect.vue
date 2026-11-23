@@ -98,11 +98,9 @@
           class="search-box-input"
           :placeholder="searchPlaceholder || 'Cari...'"
           :data-testid="searchTestId || (dataTestid ? `${dataTestid}-search` : 'searchable-select-input')"
-          @keydown.down.prevent="moveHighlight(1)"
-          @keydown.up.prevent="moveHighlight(-1)"
-          @keydown.enter.prevent="selectHighlighted(true)"
-          @keydown.tab="onSearchInputTab"
-          @keydown.esc.prevent="onSearchInputEsc"
+          @keydown="onSearchInputKeyDown"
+          @keyup="onSearchInputKeyUp"
+          @beforeinput="onSearchInputBeforeInput"
         />
         <button
           v-if="searchQuery"
@@ -175,7 +173,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch, type Component } from 'vue';
 import { ChevronDown, Search, Check, X, Plus, Trash2 } from 'lucide-vue-next';
-import { focusNextFormField } from '../utils/formNavigation';
+import { focusNextFormField, isEnterKey } from '../utils/formNavigation';
 
 export interface SelectOption {
   value: string | number;
@@ -281,8 +279,11 @@ const filteredOptions = computed(() => {
   });
 });
 
+let lastEnterHandledTimestamp = 0;
+
 watch(isOpen, (open) => {
   if (open) {
+    lastEnterHandledTimestamp = 0;
     searchQuery.value = '';
     const curIdx = filteredOptions.value.findIndex((o) => String(o.value) === String(props.modelValue));
     highlightedIndex.value = curIdx >= 0 ? curIdx : 0;
@@ -311,6 +312,25 @@ function closeDropdown() {
   searchQuery.value = '';
 }
 
+function advanceFocusToNextField(triggerEl: HTMLElement) {
+  // Dobel nextTick untuk memastikan cascading render Vue telah termount di DOM
+  nextTick(() => {
+    nextTick(() => {
+      const advanced = focusNextFormField(triggerEl);
+      if (!advanced) {
+        // Percobaan ulang sekali lagi (mis. jeda layout/render di HP lambat)
+        setTimeout(() => {
+          const retried = focusNextFormField(triggerEl);
+          if (!retried) {
+            console.warn('[SearchableSelect] Field target berikutnya belum tersedia di DOM, fokus tetap di trigger.');
+            triggerEl.focus?.();
+          }
+        }, 50);
+      }
+    });
+  });
+}
+
 function selectOption(opt: SelectOption, advanceFocus = false) {
   if (opt.disabled) return;
   emit('update:modelValue', opt.value);
@@ -319,10 +339,9 @@ function selectOption(opt: SelectOption, advanceFocus = false) {
   nextTick(() => {
     if (nativeSelectRef.value) {
       nativeSelectRef.value.value = String(opt.value);
-      nativeSelectRef.value.dispatchEvent(new Event('change', { bubbles: true }));
     }
     if (advanceFocus && triggerBtnRef.value) {
-      focusNextFormField(triggerBtnRef.value);
+      advanceFocusToNextField(triggerBtnRef.value);
     }
   });
 }
@@ -336,6 +355,45 @@ function selectHighlighted(advanceFocus = true) {
     selectOption(opt, advanceFocus);
   } else if (props.addLabel && searchQuery.value.trim()) {
     handleAdd();
+  }
+}
+
+function onSearchInputKeyDown(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    moveHighlight(1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    moveHighlight(-1);
+  } else if (isEnterKey(e)) {
+    e.preventDefault();
+    lastEnterHandledTimestamp = Date.now();
+    selectHighlighted(true);
+  } else if (e.key === 'Tab') {
+    onSearchInputTab(e);
+  } else if (e.key === 'Escape' || e.keyCode === 27) {
+    e.preventDefault();
+    onSearchInputEsc();
+  }
+}
+
+function onSearchInputKeyUp(e: KeyboardEvent) {
+  if (isEnterKey(e)) {
+    // Abaikan jika keydown sudah menangani Enter dalam 300ms terakhir
+    if (Date.now() - lastEnterHandledTimestamp < 300) return;
+    e.preventDefault();
+    lastEnterHandledTimestamp = Date.now();
+    selectHighlighted(true);
+  }
+}
+
+function onSearchInputBeforeInput(e: Event) {
+  const inputEvent = e as InputEvent;
+  if (inputEvent.inputType === 'insertLineBreak') {
+    inputEvent.preventDefault();
+    if (Date.now() - lastEnterHandledTimestamp < 300) return;
+    lastEnterHandledTimestamp = Date.now();
+    selectHighlighted(true);
   }
 }
 

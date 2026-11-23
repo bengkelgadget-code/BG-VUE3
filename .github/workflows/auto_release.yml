@@ -101,9 +101,18 @@ jobs:
           VERSION_CODE=$(node -p "require('./version.json').version_code")
           VERSION_NAME=$(node -p "require('./version.json').version_name")
           CHANGELOG=$(node -p "require('./version.json').changelog || 'Pembaruan otomatis'")
+          if [[ "$VERSION_NAME" =~ -b[0-9]+$ ]]; then
+            RELEASE_TAG="v${VERSION_NAME}"
+            APK_FILE="buku-konter-${RELEASE_TAG}.apk"
+          else
+            RELEASE_TAG="v${VERSION_NAME}-b${VERSION_CODE}"
+            APK_FILE="buku-konter-v${VERSION_NAME}-b${VERSION_CODE}.apk"
+          fi
           echo "code=${VERSION_CODE}" >> $GITHUB_OUTPUT
           echo "name=${VERSION_NAME}" >> $GITHUB_OUTPUT
           echo "changelog=${CHANGELOG}" >> $GITHUB_OUTPUT
+          echo "tag=${RELEASE_TAG}" >> $GITHUB_OUTPUT
+          echo "apk_file=${APK_FILE}" >> $GITHUB_OUTPUT
 
       # Pola Setel: Validasi versionCode wajib lebih tinggi dari rilis sebelumnya
       - name: Validate Version Code Increment
@@ -185,14 +194,14 @@ jobs:
           fi
 
           cd ..
-          cp android/app/build/outputs/apk/release/app-release.apk buku-konter-v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk ${{ steps.version_info.outputs.apk_file }}
 
       - name: Create GitHub Release with APK Asset
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}"
-          name: "Buku Konter v${{ steps.version_info.outputs.name }} (Build ${{ steps.version_info.outputs.code }})"
+          tag_name: "${{ steps.version_info.outputs.tag }}"
+          name: "Buku Konter ${{ steps.version_info.outputs.tag }} (Build ${{ steps.version_info.outputs.code }})"
           body: |
             ### Pembaruan Buku Konter
             **Versi:** ${{ steps.version_info.outputs.name }}
@@ -204,7 +213,7 @@ jobs:
             ---
             *Rilis dibuat otomatis oleh CI/CD GitHub Actions sesuai standar pola Setel.*
           files: |
-            buku-konter-v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}.apk
+            ${{ steps.version_info.outputs.apk_file }}
             android/app/build/outputs/apk/release/app-release.apk
             update.zip
           draft: false
@@ -214,8 +223,8 @@ jobs:
 
       - name: Update version.json with APK Download URL & Bundle Info & Commit
         run: |
-          APK_DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}/buku-konter-v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}.apk"
-          BUNDLE_DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ steps.version_info.outputs.name }}-b${{ steps.version_info.outputs.code }}/update.zip"
+          APK_DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.version_info.outputs.tag }}/${{ steps.version_info.outputs.apk_file }}"
+          BUNDLE_DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.version_info.outputs.tag }}/update.zip"
           node -e "
             const fs = require('fs');
             const crypto = require('crypto');
