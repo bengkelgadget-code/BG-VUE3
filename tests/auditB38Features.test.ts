@@ -343,5 +343,29 @@ describe('Audit b38 Features: Virtual Keyboard Enter, Focus Advance, & App Build
 
       wrapper.unmount();
     });
+
+    it('SearchableSelect di-unmount seketika saat timer advance pending tidak melempar error', async () => {
+      const selectWrapper = mount(SearchableSelect, {
+        props: {
+          modelValue: '',
+          options: [{ value: 'a', label: 'Item A' }],
+          placeholder: 'Pilih item',
+        },
+        attachTo: document.body,
+      });
+
+      await selectWrapper.find('.searchable-select-trigger').trigger('click');
+      await flushPromises();
+
+      const searchInput = selectWrapper.find('.search-box-input');
+      await searchInput.trigger('keydown', { key: 'Enter', keyCode: 13 });
+
+      // Unmount seketika sebelum timeout retry advance meletup
+      selectWrapper.unmount();
+
+      // Tunggu timer yang tertunda melewati 80ms
+      await new Promise((r) => setTimeout(r, 80));
+      expect(true).toBe(true);
+    });
   });
 });

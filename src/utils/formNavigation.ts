@@ -59,10 +59,13 @@ export function focusElement(target: HTMLElement | null | undefined): boolean {
 }
 
 export function focusNextFormField(currentEl: HTMLElement, container?: HTMLElement | null): boolean {
+  if (typeof document === 'undefined') return false;
   if (!currentEl) return false;
+  if ('isConnected' in currentEl && !currentEl.isConnected) return false;
 
   // Dapatkan container form
-  const form = container || currentEl.closest('form') || currentEl.closest('.form-container') || currentEl.closest('.app-main') || document.body;
+  const docBody = typeof document !== 'undefined' ? document.body : null;
+  const form = container || currentEl.closest('form') || currentEl.closest('.form-container') || currentEl.closest('.app-main') || docBody;
   if (!form) return false;
 
   const focusables = getFocusableFormElements(form as HTMLElement);
@@ -79,9 +82,10 @@ export function focusNextFormField(currentEl: HTMLElement, container?: HTMLEleme
   const currentIndex = focusables.indexOf(referenceEl);
   if (currentIndex === -1) {
     // Jika tidak ditemukan di list, cari elemen berikutnya berdasarkan urutan dokumen
+    const followingBit = typeof Node !== 'undefined' ? Node.DOCUMENT_POSITION_FOLLOWING : 4;
     for (let i = 0; i < focusables.length; i++) {
       const pos = referenceEl.compareDocumentPosition(focusables[i]);
-      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) {
+      if (pos & followingBit) {
         return focusElement(focusables[i]);
       }
     }

@@ -312,14 +312,23 @@ function closeDropdown() {
   searchQuery.value = '';
 }
 
+let advanceFocusTimeout: ReturnType<typeof setTimeout> | null = null;
+
 function advanceFocusToNextField(triggerEl: HTMLElement) {
+  if (advanceFocusTimeout) {
+    clearTimeout(advanceFocusTimeout);
+    advanceFocusTimeout = null;
+  }
   // Dobel nextTick untuk memastikan cascading render Vue telah termount di DOM
   nextTick(() => {
     nextTick(() => {
+      if (!triggerEl || !triggerEl.isConnected) return;
       const advanced = focusNextFormField(triggerEl);
       if (!advanced) {
         // Percobaan ulang sekali lagi (mis. jeda layout/render di HP lambat)
-        setTimeout(() => {
+        advanceFocusTimeout = setTimeout(() => {
+          advanceFocusTimeout = null;
+          if (!triggerEl || !triggerEl.isConnected) return;
           const retried = focusNextFormField(triggerEl);
           if (!retried) {
             console.warn('[SearchableSelect] Field target berikutnya belum tersedia di DOM, fokus tetap di trigger.');
@@ -448,6 +457,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (advanceFocusTimeout) {
+    clearTimeout(advanceFocusTimeout);
+    advanceFocusTimeout = null;
+  }
   document.removeEventListener('pointerdown', handleClickOutside);
 });
 
