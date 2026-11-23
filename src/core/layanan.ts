@@ -37,6 +37,7 @@ export interface LayananDef {
   supportsHutang: boolean;          // tampil toggle Lunas/Hutang
   touchesBalances: boolean;         // false hanya untuk jasa_transfer
   isOwnerOnly: boolean;             // true hanya untuk 5 layanan owner
+  hasMargin: boolean;               // true hanya untuk paket data (b36)
 }
 
 export const LAYANAN_DEFS: Record<string, LayananDef> = {
@@ -58,6 +59,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   tarik_tunai: {
     code: 'tarik_tunai',
@@ -77,6 +79,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   topup_ewallet: {
     code: 'topup_ewallet',
@@ -96,6 +99,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   ppob: {
     code: 'ppob',
@@ -115,6 +119,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   pulsa: {
     code: 'pulsa',
@@ -134,6 +139,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   data: {
     code: 'data',
@@ -141,18 +147,19 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     group: 'penjualan',
     icon: Layers,
     keywords: ['data', 'kuota', 'paket internet', 'internet'],
-    productCategories: ['data'],
-    productSort: 'telecom',
+    productCategories: [],
+    productSort: 'none',
     hasFee: false,
     hasFeePaidBy: false,
     needsSourceAccount: true,
-    sourceTypes: ['server_pulsa'],
+    sourceTypes: ['server_pulsa', 'provider_app'],
     paymentRule: 'kas-mandiri',
-    needsReferenceNo: true,
+    needsReferenceNo: false,
     referenceOptional: false,
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: true,
   },
   token_pln: {
     code: 'token_pln',
@@ -172,6 +179,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   game: {
     code: 'game',
@@ -191,6 +199,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   voucher: {
     code: 'voucher',
@@ -210,6 +219,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   perdana: {
     code: 'perdana',
@@ -229,6 +239,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   aksesoris: {
     code: 'aksesoris',
@@ -248,6 +259,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: true,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   jasa_transfer: {
     code: 'jasa_transfer',
@@ -267,6 +279,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: false,
     touchesBalances: false,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   pindah_dana: {
     code: 'pindah_dana',
@@ -286,6 +299,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: false,
     touchesBalances: true,
     isOwnerOnly: true,
+    hasMargin: false,
   },
   deposit_server: {
     code: 'deposit_server',
@@ -305,6 +319,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: false,
     touchesBalances: true,
     isOwnerOnly: true,
+    hasMargin: false,
   },
   deposit_provider: {
     code: 'deposit_provider',
@@ -324,6 +339,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: false,
     touchesBalances: true,
     isOwnerOnly: true,
+    hasMargin: false,
   },
   pembelian_stok: {
     code: 'pembelian_stok',
@@ -343,6 +359,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: false,
     touchesBalances: true,
     isOwnerOnly: true,
+    hasMargin: false,
   },
   operasional: {
     code: 'operasional',
@@ -362,6 +379,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: false,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
   pemasukan_lain: {
     code: 'pemasukan_lain',
@@ -381,6 +399,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     supportsHutang: false,
     touchesBalances: true,
     isOwnerOnly: false,
+    hasMargin: false,
   },
 };
 

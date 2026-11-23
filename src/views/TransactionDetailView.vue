@@ -75,6 +75,17 @@
           </div>
         </template>
 
+        <template v-if="transaction.layanan === 'data'">
+          <div v-if="transaction.margin !== undefined" class="detail-row" data-testid="detail-margin-row">
+            <span class="d-label">Margin (Profit)</span>
+            <span class="d-val text-bold" style="color: var(--color-income)">{{ formatRupiah(transaction.margin) }}</span>
+          </div>
+          <div v-if="transaction.margin !== undefined && authStore.isAdmin" class="detail-row" data-testid="detail-modal-row">
+            <span class="d-label">Modal (Dihitung)</span>
+            <span class="d-val text-muted">{{ formatRupiah(transaction.nominal - transaction.margin) }}</span>
+          </div>
+        </template>
+
         <div class="detail-row">
           <span class="d-label">Petugas Kasir</span>
           <span class="d-val">{{ kasirName }}</span>
@@ -218,6 +229,20 @@
                 min="0"
                 class="form-input tabular-nums"
                 data-testid="edit-input-fee"
+                required
+              />
+            </div>
+
+            <div v-if="transaction.layanan === 'data'" class="form-group">
+              <label class="form-label">Margin (Profit)</label>
+              <input
+                v-model.number="editForm.margin"
+                type="number"
+                min="0"
+                :max="editForm.nominal"
+                class="form-input tabular-nums"
+                placeholder="Margin profit"
+                data-testid="edit-input-margin"
                 required
               />
             </div>
@@ -464,7 +489,8 @@ const availableSourceAccounts = computed(() => {
     return activeAccounts.value.filter((a) => ['bank', 'ewallet'].includes(a.type));
   }
   if (def?.group === 'penjualan' && def.needsSourceAccount) {
-    return activeAccounts.value.filter((a) => a.type === 'server_pulsa');
+    const types = def.sourceTypes.length > 0 ? def.sourceTypes : ['server_pulsa'];
+    return activeAccounts.value.filter((a) => types.includes(a.type));
   }
   if (srv === 'pindah_dana') {
     return activeAccounts.value.filter((a) => a.id !== transaction.value?.destAccountId);
@@ -522,6 +548,7 @@ const showEditDialog = ref<boolean>(false);
 const editForm = ref({
   nominal: 0,
   fee: 0,
+  margin: 0,
   customerName: '',
   note: '',
   sourceAccountId: '',
@@ -585,6 +612,7 @@ async function openEditDialog() {
   editForm.value = {
     nominal: transaction.value.nominal,
     fee: transaction.value.fee,
+    margin: transaction.value.margin ?? 0,
     customerName: customerName.value,
     note: transaction.value.note || '',
     sourceAccountId: transaction.value.sourceAccountId || '',
@@ -668,6 +696,21 @@ async function handleEdit() {
     editError.value = 'Biaya admin tidak boleh negatif.';
     return;
   }
+  if (transaction.value.layanan === 'data') {
+    const m = editForm.value.margin;
+    if (!Number.isInteger(m)) {
+      editError.value = 'Margin harus bilangan bulat.';
+      return;
+    }
+    if (m < 0) {
+      editError.value = 'Margin tidak boleh negatif.';
+      return;
+    }
+    if (m > editForm.value.nominal) {
+      editError.value = 'Margin tidak boleh lebih besar dari nominal.';
+      return;
+    }
+  }
 
   isEditing.value = true;
   try {
@@ -675,6 +718,7 @@ async function handleEdit() {
       transaction.value.id,
       {
         nominal: editForm.value.nominal,
+        margin: transaction.value.layanan === 'data' ? editForm.value.margin : undefined,
         fee: editForm.value.fee,
         note: editForm.value.note,
         customerName: editForm.value.customerName,

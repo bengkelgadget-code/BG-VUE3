@@ -17,7 +17,13 @@
         <router-link to="/shifts" class="btn-warn-action">Buka Shift</router-link>
       </div>
 
-      <form v-else class="tx-form" @submit.prevent="handleSubmit">
+      <form
+        v-else
+        class="tx-form"
+        :class="{ 'keyboard-open': isKeyboardOpen }"
+        @submit.prevent="handleSubmit"
+        @focusin="onFormFocusIn"
+      >
         <!-- Error Banner Form -->
         <div v-if="errorMessage" class="error-banner">
           {{ errorMessage }}
@@ -166,19 +172,19 @@
           <!-- Layanan Digital (Pulsa / Paket Data / Token PLN / Game) -->
           <div v-else-if="currentLayananDef?.group === 'penjualan' && currentLayananDef.needsSourceAccount" class="cascading-fields">
             <div class="form-group">
-              <label class="form-label">Akun Server Pulsa Catatan</label>
+              <label class="form-label">{{ layanan === 'data' ? 'Akun Sumber (Server Pulsa / Aplikasi Provider)' : 'Akun Server Pulsa Catatan' }}</label>
               <SearchableSelect
                 ref="sourceAccountRef"
                 v-model="sourceAccountId"
-                :options="serverAccountOptions"
-                placeholder="-- Pilih Server Pulsa --"
-                search-placeholder="Cari server pulsa..."
+                :options="digitalSourceAccountOptions"
+                :placeholder="layanan === 'data' ? '-- Pilih Server Pulsa / Aplikasi Provider --' : '-- Pilih Server Pulsa --'"
+                search-placeholder="Cari server pulsa / provider..."
                 required
                 @change="onSourceAccountChanged"
               />
             </div>
 
-            <div class="form-group">
+            <div v-if="currentLayananDef?.needsReferenceNo" class="form-group">
               <label class="form-label">
                 Nomor Tujuan / ID Pelanggan
                 <span v-if="layanan === 'pulsa'" class="optional-tag">(Opsional)</span>
@@ -194,7 +200,7 @@
               />
             </div>
 
-            <div class="form-group">
+            <div v-if="(currentLayananDef?.productCategories?.length ?? 0) > 0" class="form-group">
               <label class="form-label">Pilih Produk Digital dari Master</label>
               <SearchableSelect
                 ref="productSelectRef"
@@ -258,6 +264,25 @@
             @enter="onNominalEnter"
             @admin-enter="onAdminEnter"
           />
+
+          <!-- Margin (Profit) untuk Paket Data (A.2) -->
+          <div v-if="currentLayananDef?.hasMargin" class="form-group margin-input-group mt-3" data-testid="margin-input-group">
+            <label class="form-label" for="margin-input">Margin (Profit)</label>
+            <input
+              id="margin-input"
+              ref="marginInputRef"
+              v-model.number="margin"
+              type="number"
+              inputmode="numeric"
+              class="form-input"
+              placeholder="Contoh: 5000"
+              min="0"
+              :max="nominal"
+              data-testid="input-margin"
+              @keydown.enter.prevent="onMarginEnter"
+            />
+            <span v-if="marginError" class="form-error-text" data-testid="margin-error">{{ marginError }}</span>
+          </div>
 
           <!-- Banner Tarif / Peringatan Tarif Belum Ada -->
           <FeeBadge
@@ -416,7 +441,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { AlertCircle } from 'lucide-vue-next';
 import AppScaffold from '../components/AppScaffold.vue';
@@ -461,10 +486,23 @@ const feeManualOverride = ref<boolean>(false);
 const paymentStatus = ref<'lunas' | 'hutang'>('lunas');
 const referenceNo = ref<string>('');
 const note = ref<string>('');
+const margin = ref<number | ''>(0);
+const marginInputRef = ref<HTMLInputElement | null>(null);
+const isKeyboardOpen = ref<boolean>(false);
 
 const paymentAccountRef = ref<HTMLSelectElement | null>(null);
 
 const currentLayananDef = computed(() => getLayananDef(layanan.value));
+
+const marginError = computed(() => {
+  if (!currentLayananDef.value?.hasMargin) return '';
+  const m = margin.value;
+  if (m === '' || m === null || m === undefined) return '';
+  if (!Number.isInteger(m)) return 'Margin harus bilangan bulat.';
+  if (m < 0) return 'Margin tidak boleh negatif.';
+  if (m > nominal.value) return 'Margin tidak boleh lebih besar dari nominal.';
+  return '';
+});
 
 const hasPaymentAccount = computed(() => {
   return Boolean(currentLayananDef.value && currentLayananDef.value.paymentRule !== 'none');
@@ -577,10 +615,6 @@ const tarikTunaiBankOptions = computed(() =>
     }))
 );
 
-const serverAccounts = computed(() =>
-  activeAccounts.value.filter((a) => a.type === 'server_pulsa')
-);
-
 const availablePhysicalProducts = computed(() => {
   const cats = currentLayananDef.value?.productCategories ?? [];
   const filtered = productList.value.filter(
@@ -652,12 +686,15 @@ const physicalProductOptions = computed(() =>
   }))
 );
 
-const serverAccountOptions = computed(() =>
-  serverAccounts.value.map((acc) => ({
-    value: acc.id,
-    label: `${acc.name} (Saldo catatan: ${formatRupiah(accountBalances.value[acc.id] || acc.initialBalance)})`,
-  }))
-);
+const digitalSourceAccountOptions = computed(() => {
+  const allowed = currentLayananDef.value?.sourceTypes ?? ['server_pulsa'];
+  return activeAccounts.value
+    .filter((a) => allowed.includes(a.type))
+    .map((acc) => ({
+      value: acc.id,
+      label: `${acc.name} (Saldo catatan: ${formatRupiah(accountBalances.value[acc.id] || acc.initialBalance)})`,
+    }));
+});
 
 const digitalProductOptions = computed(() =>
   availableDigitalProducts.value.map((p) => ({
@@ -707,6 +744,47 @@ const showSaveBar = computed(() => {
   return false;
 });
 
+function checkAndScrollFieldIntoView(el?: Element | null) {
+  const target = el || (typeof document !== 'undefined' ? document.activeElement : null);
+  if (!target || !(target instanceof HTMLElement)) return;
+  if (target.tagName === 'BUTTON' || target.closest('.sticky-footer')) return;
+  const footer = typeof document !== 'undefined' ? document.querySelector('.sticky-footer') : null;
+  if (!footer) return;
+  const targetRect = target.getBoundingClientRect();
+  const footerRect = footer.getBoundingClientRect();
+  if (targetRect.bottom >= footerRect.top - 10) {
+    if (typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+}
+
+function onFormFocusIn(event: FocusEvent) {
+  nextTick(() => {
+    checkAndScrollFieldIntoView(event.target as Element);
+  });
+}
+
+function handleViewportResize() {
+  if (typeof window === 'undefined' || !window.visualViewport) return;
+  const heightDiff = window.innerHeight - window.visualViewport.height;
+  const isOpen = heightDiff > 150;
+  isKeyboardOpen.value = isOpen;
+  if (isOpen) {
+    nextTick(() => {
+      checkAndScrollFieldIntoView();
+    });
+  }
+}
+
+watch(showSaveBar, (visible) => {
+  if (visible) {
+    nextTick(() => {
+      checkAndScrollFieldIntoView();
+    });
+  }
+});
+
 onMounted(async () => {
   // Ambil jenis dari query parameter jika ada (misal dari Aksi Cepat Home), hanya yang diizinkan untuk staf
   const qType = route.query['type'];
@@ -751,6 +829,16 @@ onMounted(async () => {
     if (shift) {
       activeShiftId.value = shift.id;
     }
+  }
+
+  if (typeof window !== 'undefined' && window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportResize);
+  }
+});
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined' && window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', handleViewportResize);
   }
 });
 
@@ -815,6 +903,8 @@ function onSourceAccountChanged() {
       focusElement(referenceNoRef.value);
     } else if (layanan.value === 'tarik_tunai') {
       focusElement(moneyInputRef.value);
+    } else if (layanan.value === 'data') {
+      focusElement(moneyInputRef.value);
     } else if (def?.group === 'penjualan' && def.needsSourceAccount) {
       focusElement(referenceNoRef.value);
     } else if (layanan.value === 'operasional') {
@@ -837,6 +927,7 @@ function selectService(code: string) {
   selectedProductId.value = '';
   productFilterQuery.value = '';
   errorMessage.value = '';
+  margin.value = 0;
   const def = getLayananDef(code);
   if (!def?.touchesBalances || code === 'jasa_transfer') {
     paymentAccountId.value = '';
@@ -844,8 +935,12 @@ function selectService(code: string) {
     feePaidBy.value = 'cash';
   }
   if (def?.group === 'penjualan' && def.needsSourceAccount) {
-    const defaultServer = activeAccounts.value.find((a) => a.type === 'server_pulsa');
-    if (defaultServer) sourceAccountId.value = defaultServer.id;
+    const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
+    const isCurValid = curAcc && (def.sourceTypes.includes(curAcc.type));
+    if (!isCurValid) {
+      const defaultAcc = activeAccounts.value.find((a) => def.sourceTypes.includes(a.type));
+      if (defaultAcc) sourceAccountId.value = defaultAcc.id;
+    }
   }
   if (code === 'tarik_tunai') {
     const defaultKas = activeAccounts.value.find((a) => a.type === 'kas');
@@ -869,6 +964,7 @@ function selectService(code: string) {
 watch(layanan, (newCode) => {
   productFilterQuery.value = '';
   selectedProductId.value = '';
+  margin.value = 0;
   const def = getLayananDef(newCode);
   if (!def?.touchesBalances || newCode === 'jasa_transfer') {
     paymentAccountId.value = '';
@@ -889,8 +985,12 @@ watch(layanan, (newCode) => {
     }
   }
   if (def?.group === 'penjualan' && def.needsSourceAccount) {
-    const defaultServer = activeAccounts.value.find((a) => a.type === 'server_pulsa');
-    if (defaultServer) sourceAccountId.value = defaultServer.id;
+    const curAcc = activeAccounts.value.find((a) => a.id === sourceAccountId.value);
+    const isCurValid = curAcc && (def.sourceTypes.includes(curAcc.type));
+    if (!isCurValid) {
+      const defaultAcc = activeAccounts.value.find((a) => def.sourceTypes.includes(a.type));
+      if (defaultAcc) sourceAccountId.value = defaultAcc.id;
+    }
   }
   initDefaultPaymentAccount();
   recalculateFee();
@@ -904,6 +1004,10 @@ async function onNominalChanged(val: number) {
 }
 
 function onNominalEnter() {
+  if (currentLayananDef.value?.hasMargin) {
+    focusElement(marginInputRef.value);
+    return;
+  }
   const hasAdmin = ['transfer', 'tarik_tunai', 'topup_ewallet', 'ppob', 'jasa_transfer'].includes(layanan.value);
   if (hasAdmin) {
     if (moneyInputRef.value && typeof moneyInputRef.value.focusAdmin === 'function') {
@@ -918,6 +1022,10 @@ function onNominalEnter() {
       focusElement(statusLunasBtnRef.value);
     }
   }
+}
+
+function onMarginEnter() {
+  focusElement(submitBtnRef.value || statusLunasBtnRef.value);
 }
 
 function onAdminEnter() {
@@ -995,6 +1103,23 @@ async function handleSubmit() {
     return;
   }
 
+  // Validasi margin untuk Paket Data
+  if (currentLayananDef.value?.hasMargin) {
+    const m = margin.value === '' ? 0 : margin.value;
+    if (!Number.isInteger(m)) {
+      errorMessage.value = 'Margin harus bilangan bulat.';
+      return;
+    }
+    if (m < 0) {
+      errorMessage.value = 'Margin tidak boleh negatif.';
+      return;
+    }
+    if (m > nominal.value) {
+      errorMessage.value = 'Margin tidak boleh lebih besar dari nominal.';
+      return;
+    }
+  }
+
   // Validasi jika Owner/Admin mengubah tanggal dari default
   if (authStore.isAdmin && isDateChanged.value) {
     if (!dateChangeReason.value.trim() || dateChangeReason.value.trim().length < 3) {
@@ -1016,7 +1141,8 @@ async function handleSubmit() {
     await transactionService.addTransaction(
       {
         layanan: layanan.value,
-        productId: selectedProductId.value || undefined,
+        productId: (layanan.value === 'data') ? undefined : (selectedProductId.value || undefined),
+        margin: (layanan.value === 'data') ? (typeof margin.value === 'number' ? margin.value : 0) : undefined,
         paymentAccountId: (layanan.value === 'tarik_tunai' || hasPaymentAccount.value) ? (paymentAccountId.value || undefined) : undefined,
         sourceAccountId: (layanan.value === 'jasa_transfer') ? undefined : (sourceAccountId.value || undefined),
         destAccountId: destAccountId.value || undefined,
@@ -1028,7 +1154,7 @@ async function handleSubmit() {
         paymentMethod: 'tunai',
         paymentStatus: (layanan.value === 'jasa_transfer') ? 'lunas' : paymentStatus.value,
         customerId: selectedCustomerId.value || undefined,
-        referenceNo: referenceNo.value || undefined,
+        referenceNo: (layanan.value === 'data') ? undefined : (referenceNo.value || undefined),
         note: note.value || undefined,
         date: txDate,
         dateChangeReason: (authStore.isAdmin && isDateChanged.value) ? dateChangeReason.value.trim() : undefined,
@@ -1128,6 +1254,7 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding-bottom: 200px;
 }
 
 .error-banner {
@@ -1381,7 +1508,7 @@ async function handleSubmit() {
 
 .sticky-footer {
   position: sticky;
-  bottom: 70px;
+  bottom: max(8px, calc(70px - env(keyboard-inset-height, 0px)));
   background: var(--surface-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
@@ -1390,6 +1517,28 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   z-index: 20;
+}
+
+.keyboard-open .sticky-footer {
+  bottom: 8px;
+}
+
+.form-input,
+:deep(.form-input),
+:deep(.searchable-select-trigger),
+:deep(.money-input-field) {
+  scroll-margin-bottom: 180px;
+}
+
+.margin-input-group {
+  margin-top: 12px;
+}
+
+.form-error-text {
+  font-size: 11px;
+  color: var(--color-danger, #ef4444);
+  margin-top: 4px;
+  display: block;
 }
 
 .btn-submit-tx {

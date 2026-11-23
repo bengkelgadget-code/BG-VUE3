@@ -41,6 +41,24 @@ export function getTodayWitaString(): string {
 }
 
 /**
+ * Awal hari WITA (00:00:00.000 WITA) dalam epoch ms
+ */
+export function startOfWitaDay(epochMs: number): number {
+  const witaDate = new Date(epochMs + WITA_OFFSET_MS);
+  const y = witaDate.getUTCFullYear();
+  const m = witaDate.getUTCMonth();
+  const d = witaDate.getUTCDate();
+  return Date.UTC(y, m, d, 0, 0, 0, 0) - WITA_OFFSET_MS;
+}
+
+/**
+ * Memeriksa apakah dua epoch ms berada pada hari yang sama dalam WITA
+ */
+export function isSameWitaDay(epochA: number, epochB: number): boolean {
+  return getWitaDateString(epochA) === getWitaDateString(epochB);
+}
+
+/**
  * Mengambil bulan saat ini dalam format YYYY-MM WITA
  */
 export function getCurrentMonthWitaString(): string {

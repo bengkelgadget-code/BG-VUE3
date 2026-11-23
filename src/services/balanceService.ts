@@ -98,6 +98,9 @@ export class BalanceService {
       case 'token_pln':
       case 'game': {
         if (!sourceAccountId) {
+          if (layanan === 'data') {
+            throw new AppError('Transaksi data membutuhkan akun Server Pulsa atau Aplikasi Provider.');
+          }
           throw new AppError(`Transaksi ${layanan} membutuhkan akun server pulsa catatan.`);
         }
         // Akun Server Pulsa catatan berkurang modal (hanya catatan lokal)

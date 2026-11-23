@@ -89,6 +89,7 @@ export interface Transaction {
   sourceAccountId?: string;
   destAccountId?: string;
   nominal: number; // > 0, int Rupiah
+  margin?: number; // int Rupiah, >= 0, khusus data (b36)
   fee: number; // int Rupiah, default 0
   feePaidBy: 'cash' | 'debit_rekening';
   feeRuleId?: string;

@@ -11,8 +11,27 @@
         </div>
       </div>
 
-      <!-- Filter Controls: Chip Kategori & Dropdown Layanan Berkelompok -->
+      <!-- Filter Controls: Filter Tanggal, Chip Kategori & Dropdown Layanan Berkelompok -->
       <div class="filter-controls">
+        <div class="filter-date">
+          <input
+            v-model="selectedDate"
+            type="date"
+            class="filter-date-input"
+            data-testid="filter-date-input"
+            aria-label="Filter Tanggal"
+          />
+          <button
+            type="button"
+            class="chip-btn"
+            :class="{ active: selectedDate === null }"
+            data-testid="filter-date-all"
+            @click="selectedDate = null"
+          >
+            Semua
+          </button>
+        </div>
+
         <div class="filter-chips">
           <button
             v-for="f in categoryChips"
@@ -42,7 +61,7 @@
       <EmptyState
         v-if="filteredTransactions.length === 0"
         title="Belum Ada Transaksi"
-        :description="selectedFilter === 'all' ? 'Shift ini belum ada transaksi tercatat.' : 'Tidak ada transaksi dengan filter ini.'"
+        :description="emptyDescription"
       >
         <template #action>
           <router-link v-if="authStore.isOwner" to="/transactions/owner" class="btn-primary">
@@ -92,12 +111,14 @@ import { useAuthStore } from '../stores/authStore';
 import { db } from '../db/database';
 import type { Transaction } from '../db/types';
 import { formatRupiah, formatTanggalWita } from '../utils/format';
+import { getTodayWitaString, getWitaDateString } from '../utils/datePeriod';
 import { layananByGroup } from '../core/layanan';
 import SearchableSelect from '../components/SearchableSelect.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const transactions = ref<Transaction[]>([]);
+const selectedDate = ref<string | null>(getTodayWitaString());
 const selectedFilter = ref<string>('all');
 
 const categoryChips = [
@@ -148,23 +169,46 @@ function selectFilter(key: string) {
 }
 
 const filteredTransactions = computed(() => {
-  if (selectedFilter.value === 'all') return transactions.value;
+  let list = transactions.value;
+
+  // 1. Filter tanggal terlebih dahulu bila aktif (WITA)
+  if (selectedDate.value) {
+    list = list.filter((t) => getWitaDateString(t.date) === selectedDate.value);
+  }
+
+  // 2. Filter layanan / status
+  if (selectedFilter.value === 'all') return list;
   if (selectedFilter.value === 'hutang') {
-    return transactions.value.filter((t) => t.paymentStatus === 'hutang');
+    return list.filter((t) => t.paymentStatus === 'hutang');
   }
   if (selectedFilter.value === 'void') {
-    return transactions.value.filter((t) => t.status === 'void');
+    return list.filter((t) => t.status === 'void');
   }
   if (selectedFilter.value === 'group_penjualan') {
-    return transactions.value.filter((t) => PENJUALAN_SERVICES.includes(t.layanan));
+    return list.filter((t) => PENJUALAN_SERVICES.includes(t.layanan));
   }
   if (selectedFilter.value === 'group_transfer') {
-    return transactions.value.filter((t) => TRANSFER_SERVICES.includes(t.layanan));
+    return list.filter((t) => TRANSFER_SERVICES.includes(t.layanan));
   }
   if (selectedFilter.value === 'group_lainnya') {
-    return transactions.value.filter((t) => LAINNYA_SERVICES.includes(t.layanan));
+    return list.filter((t) => LAINNYA_SERVICES.includes(t.layanan));
   }
-  return transactions.value.filter((t) => t.layanan === selectedFilter.value);
+  return list.filter((t) => t.layanan === selectedFilter.value);
+});
+
+const emptyDescription = computed(() => {
+  if (transactions.value.length === 0) {
+    return 'Shift ini belum ada transaksi tercatat.';
+  }
+  if (selectedDate.value) {
+    const txsOnDate = transactions.value.filter((t) => getWitaDateString(t.date) === selectedDate.value);
+    if (txsOnDate.length === 0) {
+      return `Tidak ada transaksi pada ${selectedDate.value}.`;
+    }
+  }
+  return selectedFilter.value === 'all'
+    ? 'Shift ini belum ada transaksi tercatat.'
+    : 'Tidak ada transaksi dengan filter ini.';
 });
 
 function openDetail(id: string) {
@@ -218,6 +262,30 @@ function openDetail(id: string) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.filter-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-date-input {
+  height: 34px;
+  padding: 4px 10px;
+  border-radius: var(--radius-chip);
+  border: 1px solid var(--border-color);
+  background: var(--surface-card);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.filter-date-input:focus {
+  border-color: var(--color-primary);
 }
 
 .filter-chips {

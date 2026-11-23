@@ -24,6 +24,7 @@ export interface TransactionInput {
   destAccountId?: string;
   paymentAccountId?: string; // b31: dropdown Diterima Di manual
   nominal: number; // int Rupiah, > 0
+  margin?: number; // int Rupiah, >= 0, khusus data (b36)
   fee: number; // int Rupiah, >= 0
   feePaidBy: 'cash' | 'debit_rekening';
   feeRuleId?: string;
@@ -41,6 +42,7 @@ export interface TransactionInput {
 
 export interface EditTransactionInput {
   nominal?: number;
+  margin?: number;
   fee?: number;
   note?: string;
   customerName?: string;
@@ -128,6 +130,22 @@ export class TransactionService {
           paymentAccountId = payAcc.id;
         }
       } else {
+        // b36: Validasi akun sumber Paket Data (server_pulsa atau provider_app)
+        if (input.layanan === 'data') {
+          if (!input.sourceAccountId) {
+            throw new AppError('Sumber dana Paket Data hanya Server Pulsa atau Aplikasi Provider.');
+          }
+          const srcAcc = await db.accounts.get(input.sourceAccountId);
+          if (!srcAcc || !srcAcc.isActive || (srcAcc.type !== 'server_pulsa' && srcAcc.type !== 'provider_app')) {
+            throw new AppError('Sumber dana Paket Data hanya Server Pulsa atau Aplikasi Provider.');
+          }
+        } else if (input.layanan === 'pulsa' && input.sourceAccountId) {
+          const srcAcc = await db.accounts.get(input.sourceAccountId);
+          if (srcAcc && srcAcc.type !== 'server_pulsa') {
+            throw new AppError('Sumber dana Pulsa hanya Server Pulsa.');
+          }
+        }
+
         // T5: Validasi sumber transfer/topup/ppob (hanya bank/ewallet, tidak boleh kas)
         if (['transfer', 'topup_ewallet', 'ppob'].includes(input.layanan) && input.sourceAccountId) {
           const srcAcc = await db.accounts.get(input.sourceAccountId);
@@ -214,6 +232,20 @@ export class TransactionService {
       }
     }
 
+    let margin: number | undefined = undefined;
+    if (input.layanan === 'data') {
+      margin = input.margin ?? 0;
+      if (!Number.isInteger(margin)) {
+        throw new AppError('Margin harus bilangan bulat.');
+      }
+      if (margin < 0) {
+        throw new AppError('Margin tidak boleh negatif.');
+      }
+      if (margin > input.nominal) {
+        throw new AppError('Margin tidak boleh lebih besar dari nominal.');
+      }
+    }
+
     // Ambil modal & jual snapshot jika transaksi memiliki produk
     let modal = 0;
     let hargaJual = input.nominal;
@@ -223,7 +255,12 @@ export class TransactionService {
     const rawItems = (input as { cartItems?: CartItemInput[]; items?: CartItemInput[] }).cartItems ||
       (input as { cartItems?: CartItemInput[]; items?: CartItemInput[] }).items;
 
-    if (rawItems && rawItems.length > 0) {
+    if (input.layanan === 'data') {
+      // Jalur khusus Paket Data (b36): modal = nominal - margin, hargaJual = nominal, tanpa baris item
+      modal = input.nominal - (margin ?? 0);
+      hargaJual = input.nominal;
+      productNameSnapshot = 'Paket Data';
+    } else if (rawItems && rawItems.length > 0) {
       // Keranjang multi-item / pembelian_stok
       let totalModal = 0;
       let totalJual = 0;
@@ -340,6 +377,7 @@ export class TransactionService {
       sourceAccountId: !touchesBalances ? undefined : effectiveSourceAccountId,
       destAccountId: !touchesBalances ? undefined : input.destAccountId,
       nominal: input.nominal,
+      margin: input.layanan === 'data' ? margin : undefined,
       fee: input.fee,
       feePaidBy: input.feePaidBy,
       feeRuleId: input.feeRuleId,
@@ -681,6 +719,14 @@ export class TransactionService {
             throw new AppError('Rekening Terima Tarik Tunai hanya Rekening Bank.');
           }
         }
+        if (tx.layanan === 'data') {
+          if (srcAcc.type !== 'server_pulsa' && srcAcc.type !== 'provider_app') {
+            throw new AppError('Sumber dana Paket Data hanya Server Pulsa atau Aplikasi Provider.');
+          }
+        }
+        if (tx.layanan === 'pulsa' && srcAcc.type !== 'server_pulsa') {
+          throw new AppError('Sumber dana Pulsa hanya Server Pulsa.');
+        }
         if (['transfer', 'topup_ewallet', 'ppob'].includes(tx.layanan) && srcAcc.type === 'kas') {
           throw new AppError('Sumber dana tidak boleh Akun Kas.');
         }
@@ -761,6 +807,20 @@ export class TransactionService {
       }
     }
 
+    let newMargin: number | undefined = undefined;
+    if (tx.layanan === 'data') {
+      newMargin = input.margin !== undefined ? input.margin : (tx.margin ?? 0);
+      if (!Number.isInteger(newMargin)) {
+        throw new AppError('Margin harus bilangan bulat.');
+      }
+      if (newMargin < 0) {
+        throw new AppError('Margin tidak boleh negatif.');
+      }
+      if (newMargin > newNominal) {
+        throw new AppError('Margin tidak boleh lebih besar dari nominal.');
+      }
+    }
+
     const newFee = input.fee !== undefined ? input.fee : tx.fee;
     if (newFee < 0 || !Number.isFinite(newFee)) {
       throw new AppError('Biaya admin tidak boleh negatif.');
@@ -769,7 +829,8 @@ export class TransactionService {
     const newNote = input.note !== undefined ? input.note.trim() : (tx.note || '');
 
     const now = Date.now();
-    const isAmountChanged = newNominal !== tx.nominal || newFee !== tx.fee;
+    const isMarginChanged = tx.layanan === 'data' && newMargin !== (tx.margin ?? 0);
+    const isAmountChanged = newNominal !== tx.nominal || newFee !== tx.fee || isMarginChanged;
     const shouldRebalance = isAmountChanged || isAccountChanged;
 
     await db.transaction(
@@ -819,7 +880,10 @@ export class TransactionService {
           const items = await db.transactionItems.where('transactionId').equals(transactionId).toArray();
           let modal = 0;
           let hargaJual = newNominal;
-          if (items.length > 0) {
+          if (tx.layanan === 'data' && items.length === 0) {
+            modal = newNominal - (newMargin ?? 0);
+            hargaJual = newNominal;
+          } else if (items.length > 0) {
             if (items.length === 1 && newNominal !== tx.nominal) {
               const singleItem = items[0];
               const newPrice = Math.round(newNominal / singleItem.qty);
@@ -926,6 +990,9 @@ export class TransactionService {
           feeManualOverride: input.fee !== undefined ? true : tx.feeManualOverride,
           updatedAt: now,
         };
+        if (tx.layanan === 'data') {
+          updatePayload.margin = newMargin;
+        }
         if (tx.layanan !== 'jasa_transfer') {
           if (isSourceChanged) {
             updatePayload.sourceAccountId = input.sourceAccountId;
@@ -949,6 +1016,10 @@ export class TransactionService {
           note: newNote,
           customerName: updatedCustomerName ?? oldCustomerName,
         };
+        if (tx.layanan === 'data') {
+          oldAuditDetail.margin = tx.margin;
+          newAuditDetail.margin = newMargin;
+        }
 
         if (isSourceChanged) {
           oldAuditDetail.sourceAccount = { id: tx.sourceAccountId, name: oldSourceAccountName };

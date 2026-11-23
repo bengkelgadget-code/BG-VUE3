@@ -82,8 +82,12 @@ export class ReportService {
       }
       // Ambil modal item jika ada
       const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
-      for (const item of items) {
-        total += item.modalSnapshot * item.qty;
+      if (items.length > 0) {
+        for (const item of items) {
+          total += item.modalSnapshot * item.qty;
+        }
+      } else if (t.layanan === 'data') {
+        total += Math.max(0, t.nominal - (t.margin ?? 0));
       }
     }
     return total;
@@ -114,8 +118,12 @@ export class ReportService {
 
       // Selisih jual - modal dari barang / pulsa
       const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
-      for (const item of items) {
-        laba += (item.hargaJualSnapshot - item.modalSnapshot) * item.qty;
+      if (items.length > 0) {
+        for (const item of items) {
+          laba += (item.hargaJualSnapshot - item.modalSnapshot) * item.qty;
+        }
+      } else if (t.layanan === 'data') {
+        laba += t.margin ?? 0;
       }
     }
 
@@ -151,8 +159,12 @@ export class ReportService {
         entry.omzet += t.nominal;
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
-        for (const item of items) {
-          modal += item.modalSnapshot * item.qty;
+        if (items.length > 0) {
+          for (const item of items) {
+            modal += item.modalSnapshot * item.qty;
+          }
+        } else if (t.layanan === 'data') {
+          modal = Math.max(0, t.nominal - (t.margin ?? 0));
         }
         entry.laba += t.nominal - modal;
       }
@@ -219,8 +231,12 @@ export class ReportService {
         p.totalIn += t.nominal;
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
-        for (const item of items) {
-          modal += item.modalSnapshot * item.qty;
+        if (items.length > 0) {
+          for (const item of items) {
+            modal += item.modalSnapshot * item.qty;
+          }
+        } else if (t.layanan === 'data') {
+          modal = Math.max(0, t.nominal - (t.margin ?? 0));
         }
         p.totalOut += modal;
         p.laba += t.nominal - modal;
@@ -252,8 +268,12 @@ export class ReportService {
       } else if (!EXCLUDED_LABA_SERVICES.includes(t.layanan)) {
         const items = await db.transactionItems.where('transactionId').equals(t.id).toArray();
         let modal = 0;
-        for (const item of items) {
-          modal += item.modalSnapshot * item.qty;
+        if (items.length > 0) {
+          for (const item of items) {
+            modal += item.modalSnapshot * item.qty;
+          }
+        } else if (t.layanan === 'data') {
+          modal = Math.max(0, t.nominal - (t.margin ?? 0));
         }
         entry.laba += t.nominal - modal;
       }
