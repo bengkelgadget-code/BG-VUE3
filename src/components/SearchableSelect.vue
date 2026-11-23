@@ -100,8 +100,9 @@
           :data-testid="searchTestId || (dataTestid ? `${dataTestid}-search` : 'searchable-select-input')"
           @keydown.down.prevent="moveHighlight(1)"
           @keydown.up.prevent="moveHighlight(-1)"
-          @keydown.enter.prevent="selectHighlighted"
-          @keydown.esc.prevent="closeDropdown"
+          @keydown.enter.prevent="selectHighlighted(true)"
+          @keydown.tab="onSearchInputTab"
+          @keydown.esc.prevent="onSearchInputEsc"
         />
         <button
           v-if="searchQuery"
@@ -174,6 +175,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch, type Component } from 'vue';
 import { ChevronDown, Search, Check, X, Plus, Trash2 } from 'lucide-vue-next';
+import { focusNextFormField } from '../utils/formNavigation';
 
 export interface SelectOption {
   value: string | number;
@@ -309,7 +311,7 @@ function closeDropdown() {
   searchQuery.value = '';
 }
 
-function selectOption(opt: SelectOption) {
+function selectOption(opt: SelectOption, advanceFocus = false) {
   if (opt.disabled) return;
   emit('update:modelValue', opt.value);
   emit('change', opt.value);
@@ -319,16 +321,42 @@ function selectOption(opt: SelectOption) {
       nativeSelectRef.value.value = String(opt.value);
       nativeSelectRef.value.dispatchEvent(new Event('change', { bubbles: true }));
     }
+    if (advanceFocus && triggerBtnRef.value) {
+      focusNextFormField(triggerBtnRef.value);
+    }
   });
 }
 
-function selectHighlighted() {
-  const opt = filteredOptions.value[highlightedIndex.value];
+function selectHighlighted(advanceFocus = true) {
+  let opt = filteredOptions.value[highlightedIndex.value];
+  if (!opt && filteredOptions.value.length > 0) {
+    opt = filteredOptions.value[0];
+  }
   if (opt) {
-    selectOption(opt);
+    selectOption(opt, advanceFocus);
   } else if (props.addLabel && searchQuery.value.trim()) {
     handleAdd();
   }
+}
+
+function onSearchInputTab(e: KeyboardEvent) {
+  if (filteredOptions.value.length > 0) {
+    e.preventDefault();
+    let opt = filteredOptions.value[highlightedIndex.value];
+    if (!opt) {
+      opt = filteredOptions.value[0];
+    }
+    selectOption(opt, true);
+  } else {
+    closeDropdown();
+  }
+}
+
+function onSearchInputEsc() {
+  closeDropdown();
+  nextTick(() => {
+    triggerBtnRef.value?.focus();
+  });
 }
 
 function moveHighlight(step: number) {

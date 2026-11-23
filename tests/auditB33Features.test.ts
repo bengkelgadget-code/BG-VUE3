@@ -804,7 +804,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
           nominal: 1000000,
           fee: 7000,
           feeManualOverride: false,
-          feePaidBy: 'cash',
+          feePaidBy: 'debit_rekening',
           paymentMethod: 'tunai',
           paymentStatus: 'hutang',
           customerId,
@@ -865,7 +865,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
           nominal: 1000000,
           fee: 7000,
           feeManualOverride: false,
-          feePaidBy: 'cash',
+          feePaidBy: 'debit_rekening',
           paymentMethod: 'tunai',
           paymentStatus: 'hutang',
           customerId,
@@ -892,8 +892,8 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
     });
   });
 
-  describe('D.11: Toggle Fee Bayar Admin (T2)', () => {
-    it('toggle Bayar Admin tersembunyi untuk tarik_tunai dan jasa_transfer, namun tampil untuk transfer', async () => {
+  describe('D.11: Toggle Fee Bayar Admin (T2 & b37)', () => {
+    it('toggle Bayar Admin tampil untuk tarik_tunai (b37) dan transfer, tersembunyi untuk jasa_transfer', async () => {
       const wrapper = mount(AddTransactionView, {
         global: {
           plugins: [pinia, router],
@@ -907,7 +907,7 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
         expect(wrapper.find('[data-testid="service-dropdown-trigger"]').exists()).toBe(true);
       });
 
-      // 1. Tarik Tunai: toggle Bayar Admin tersembunyi
+      // 1. Tarik Tunai: toggle Bayar Admin TAMPIL dengan Potong di Dalam dan Cash (b37)
       const trigger = wrapper.find('[data-testid="service-dropdown-trigger"]');
       await trigger.trigger('click');
       await waitFor(() => {
@@ -915,7 +915,9 @@ describe('Audit b33 Features: Sistem Smart Registry Layanan & Form Transaksi Sta
       });
       await wrapper.find('[data-testid="service-option-tarik_tunai"]').trigger('click');
       await flushPromises();
-      expect(wrapper.find('.toggle-group').exists()).toBe(false);
+      expect(wrapper.find('.toggle-group').exists()).toBe(true);
+      expect(wrapper.text()).toContain('Potong di Dalam');
+      expect(wrapper.text()).toContain('Cash');
 
       // 2. Jasa Transfer: toggle Bayar Admin tersembunyi
       await trigger.trigger('click');

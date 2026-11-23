@@ -33,7 +33,14 @@
         </button>
       </div>
 
-      <form class="owner-tx-form" @submit.prevent="handleSubmit">
+      <form
+        class="owner-tx-form"
+        :class="{ 'keyboard-open': isKeyboardOpen }"
+        @submit.prevent="handleSubmit"
+        @focusin="onFormFocusIn"
+        @focusout="onFormFocusOut"
+        @keydown.enter="handleFormKeyDown($event, $el)"
+      >
         <!-- 1. PINDAH DANA -->
         <div v-if="selectedTab === 'pindah_dana'" class="form-card">
           <div class="form-group">
@@ -281,7 +288,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import AppScaffold from '../components/AppScaffold.vue';
 import { db } from '../db/database';
@@ -293,6 +300,7 @@ import { AppError } from '../core/errors';
 import { ownerLayanan } from '../core/layanan';
 import type { Account, Product } from '../db/types';
 import SearchableSelect from '../components/SearchableSelect.vue';
+import { handleFormKeyDown } from '../utils/formNavigation';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -410,8 +418,50 @@ async function loadData() {
     .toArray();
 }
 
+const isKeyboardOpen = ref(false);
+let baselineHeight = 0;
+
+function updateKeyboardState() {
+  if (typeof window === 'undefined') return;
+  const currentHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  if (!baselineHeight || currentHeight > baselineHeight) {
+    baselineHeight = currentHeight;
+  }
+  const isResized = baselineHeight > 0 && (baselineHeight - currentHeight > 120);
+  const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+  const isInputActive = Boolean(
+    activeEl &&
+    (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.classList.contains('search-box-input')) &&
+    !activeEl.classList.contains('visually-hidden-select')
+  );
+  isKeyboardOpen.value = isResized || isInputActive;
+}
+
+function onFormFocusIn() {
+  updateKeyboardState();
+}
+
+function onFormFocusOut() {
+  setTimeout(() => {
+    updateKeyboardState();
+  }, 100);
+}
+
+function handleViewportResize() {
+  updateKeyboardState();
+}
+
 onMounted(async () => {
   await loadData();
+  if (typeof window !== 'undefined' && window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportResize);
+  }
+});
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined' && window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', handleViewportResize);
+  }
 });
 
 async function handleSubmit() {
@@ -609,6 +659,7 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding-bottom: 90px;
 }
 
 .form-card {
@@ -682,6 +733,12 @@ async function handleSubmit() {
 }
 
 .btn-submit {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  max-width: min(calc(100vw - 32px), 568px);
+  margin: 0 auto;
+  bottom: 16px;
   padding: 12px;
   border-radius: var(--radius-btn);
   border: none;
@@ -690,6 +747,14 @@ async function handleSubmit() {
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
+  z-index: 50;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transition: bottom 0.15s ease-out;
+}
+
+.keyboard-open .btn-submit,
+.owner-tx-form.keyboard-open .btn-submit {
+  bottom: 8px;
 }
 
 .btn-submit:disabled {

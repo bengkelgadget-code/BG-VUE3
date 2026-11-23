@@ -13,7 +13,7 @@
         Aplikasi baru terpasang dan siap digunakan. Buat nama pemilik konter dan PIN keamanan untuk memulai.
       </p>
 
-      <form class="setup-form" @submit.prevent="handleSubmit">
+      <form class="setup-form" @submit.prevent="handleSubmit" @keydown.enter="handleFormKeyDown($event, $el)">
         <div v-if="errorMessage" class="error-banner">
           {{ errorMessage }}
         </div>
@@ -81,6 +81,7 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/authStore';
 import { AppError } from '../core/errors';
+import { handleFormKeyDown } from '../utils/formNavigation';
 
 const router = useRouter();
 const authStore = useAuthStore();

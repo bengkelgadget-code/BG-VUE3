@@ -53,18 +53,20 @@
             class="toggle-btn"
             :class="{ active: feePaidBy === 'cash' }"
             :disabled="disabled"
+            data-testid="btn-fee-cash"
             @click="setFeePaidBy('cash')"
           >
-            Cash
+            {{ cashLabel }}
           </button>
           <button
             type="button"
             class="toggle-btn"
             :class="{ active: feePaidBy === 'debit_rekening' }"
             :disabled="disabled"
+            data-testid="btn-fee-debit"
             @click="setFeePaidBy('debit_rekening')"
           >
-            Debit Rekening
+            {{ debitLabel }}
           </button>
         </div>
       </div>
@@ -88,6 +90,8 @@ const props = withDefaults(
     feeManualOverride?: boolean;
     hideAdmin?: boolean;
     hideFeePaidBy?: boolean;
+    debitLabel?: string;
+    cashLabel?: string;
     disabled?: boolean;
   }>(),
   {
@@ -100,6 +104,8 @@ const props = withDefaults(
     feeManualOverride: false,
     hideAdmin: false,
     hideFeePaidBy: false,
+    debitLabel: 'Debit Rekening',
+    cashLabel: 'Cash',
     disabled: false,
   }
 );

@@ -71,7 +71,7 @@
       <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
         <div class="modal-box">
           <h3 class="modal-title">Tambah Petugas Baru</h3>
-          <form class="modal-form" @submit.prevent="submitAddUser">
+          <form class="modal-form" @submit.prevent="submitAddUser" @keydown.enter="handleFormKeyDown($event, $el)">
             <div class="form-group">
               <label class="form-label">Nama Petugas</label>
               <input
@@ -136,7 +136,7 @@
       <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
         <div class="modal-box">
           <h3 class="modal-title">Ubah Data Petugas</h3>
-          <form class="modal-form" @submit.prevent="submitEditUser">
+          <form class="modal-form" @submit.prevent="submitEditUser" @keydown.enter="handleFormKeyDown($event, $el)">
             <div class="form-group">
               <label class="form-label">Nama Petugas</label>
               <input
@@ -178,7 +178,7 @@
           <p class="modal-desc">
             Atur PIN baru untuk <strong>{{ targetUser?.name }}</strong> tanpa memerlukan PIN lama.
           </p>
-          <form class="modal-form" @submit.prevent="submitResetPin">
+          <form class="modal-form" @submit.prevent="submitResetPin" @keydown.enter="handleFormKeyDown($event, $el)">
             <div class="form-group">
               <label class="form-label">PIN Baru (4-6 Angka)</label>
               <input
@@ -229,6 +229,7 @@ import { useAuthStore } from '../stores/authStore';
 import { authService } from '../services/authService';
 import type { User, UserRole } from '../db/types';
 import SearchableSelect from '../components/SearchableSelect.vue';
+import { handleFormKeyDown } from '../utils/formNavigation';
 
 const roleOptions = [
   { value: 'kasir', label: 'Kasir' },

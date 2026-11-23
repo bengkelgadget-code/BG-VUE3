@@ -70,7 +70,7 @@ export const LAYANAN_DEFS: Record<string, LayananDef> = {
     productCategories: [],
     productSort: 'none',
     hasFee: true,
-    hasFeePaidBy: false, // T2: tidak ada toggle bayar admin
+    hasFeePaidBy: true,
     needsSourceAccount: true,
     sourceTypes: ['bank'], // T1: rekening terima transfer hanya bank
     paymentRule: 'none', // T1: tidak ada field 'Diterima Di'; kas pembayar mengisi paymentAccountId

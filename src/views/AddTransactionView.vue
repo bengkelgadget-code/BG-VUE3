@@ -23,6 +23,8 @@
         :class="{ 'keyboard-open': isKeyboardOpen }"
         @submit.prevent="handleSubmit"
         @focusin="onFormFocusIn"
+        @focusout="onFormFocusOut"
+        @keydown.enter="handleFormKeyDown($event, $el)"
       >
         <!-- Error Banner Form -->
         <div v-if="errorMessage" class="error-banner">
@@ -257,6 +259,8 @@
             v-model:feePaidBy="feePaidBy"
             :hide-admin="!currentLayananDef?.hasFee"
             :hide-fee-paid-by="!currentLayananDef?.hasFeePaidBy"
+            :debit-label="layanan === 'tarik_tunai' ? 'Potong di Dalam' : 'Debit Rekening'"
+            :cash-label="'Cash'"
             :is-auto-fee="Boolean(matchedRule && !feeManualOverride)"
             :fee-manual-override="feeManualOverride"
             @update:model-value="onNominalChanged"
@@ -264,6 +268,23 @@
             @enter="onNominalEnter"
             @admin-enter="onAdminEnter"
           />
+
+          <!-- Hitungan Langsung Tarik Tunai (b37) -->
+          <div
+            v-if="layanan === 'tarik_tunai' && nominal > 0"
+            class="tarik-tunai-calc-box mt-3"
+            data-testid="tarik-tunai-calc"
+          >
+            <div class="calc-label">Hitungan Penyerahan Uang:</div>
+            <div class="calc-value">
+              <span v-if="feePaidBy === 'debit_rekening'">
+                Tunai diserahkan: <strong class="text-accent">{{ formatRupiah(Math.max(0, nominal - fee)) }}</strong>
+              </span>
+              <span v-else>
+                Tunai diserahkan: <strong class="text-accent">{{ formatRupiah(nominal) }}</strong> &bull; Fee tunai: <strong class="text-accent">{{ formatRupiah(fee) }}</strong>
+              </span>
+            </div>
+          </div>
 
           <!-- Margin (Profit) untuk Paket Data (A.2) -->
           <div v-if="currentLayananDef?.hasMargin" class="form-group margin-input-group mt-3" data-testid="margin-input-group">
@@ -452,6 +473,7 @@ import { formatRupiah, formatTanggalWita } from '../utils/format';
 import { getTodayWitaString, parseWitaDateToEpoch } from '../utils/datePeriod';
 import { db } from '../db/database';
 import { feeRuleService } from '../services/feeRuleService';
+import { focusNextFormField, handleFormKeyDown } from '../utils/formNavigation';
 import { transactionService } from '../services/transactionService';
 import type { Account, Product, Customer, AdminFeeRule, ProductCatalogEntry, ProductCategory } from '../db/types';
 import { AppError } from '../core/errors';
@@ -759,18 +781,40 @@ function checkAndScrollFieldIntoView(el?: Element | null) {
   }
 }
 
+let baselineHeight = 0;
+
+function updateKeyboardState() {
+  if (typeof window === 'undefined') return;
+  const currentHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  if (!baselineHeight || currentHeight > baselineHeight) {
+    baselineHeight = currentHeight;
+  }
+  const isResized = baselineHeight > 0 && (baselineHeight - currentHeight > 120);
+  const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+  const isInputActive = Boolean(
+    activeEl &&
+    (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.classList.contains('search-box-input')) &&
+    !activeEl.classList.contains('visually-hidden-select')
+  );
+  isKeyboardOpen.value = isResized || isInputActive;
+}
+
 function onFormFocusIn(event: FocusEvent) {
+  updateKeyboardState();
   nextTick(() => {
     checkAndScrollFieldIntoView(event.target as Element);
   });
 }
 
+function onFormFocusOut() {
+  setTimeout(() => {
+    updateKeyboardState();
+  }, 100);
+}
+
 function handleViewportResize() {
-  if (typeof window === 'undefined' || !window.visualViewport) return;
-  const heightDiff = window.innerHeight - window.visualViewport.height;
-  const isOpen = heightDiff > 150;
-  isKeyboardOpen.value = isOpen;
-  if (isOpen) {
+  updateKeyboardState();
+  if (isKeyboardOpen.value) {
     nextTick(() => {
       checkAndScrollFieldIntoView();
     });
@@ -1013,27 +1057,26 @@ function onNominalEnter() {
     if (moneyInputRef.value && typeof moneyInputRef.value.focusAdmin === 'function') {
       moneyInputRef.value.focusAdmin();
     } else {
-      focusElement(statusLunasBtnRef.value);
+      const moneyEl = (moneyInputRef.value?.$el || moneyInputRef.value) as HTMLElement;
+      focusNextFormField(moneyEl);
     }
   } else {
-    if (layanan.value === 'operasional') {
-      focusElement(noteRef.value || submitBtnRef.value);
-    } else {
-      focusElement(statusLunasBtnRef.value);
-    }
+    const moneyEl = (moneyInputRef.value?.$el || moneyInputRef.value) as HTMLElement;
+    focusNextFormField(moneyEl);
   }
 }
 
 function onMarginEnter() {
-  focusElement(submitBtnRef.value || statusLunasBtnRef.value);
+  if (marginInputRef.value) {
+    focusNextFormField(marginInputRef.value);
+  } else {
+    focusElement(submitBtnRef.value);
+  }
 }
 
 function onAdminEnter() {
-  if (layanan.value === 'jasa_transfer') {
-    focusElement(noteRef.value || submitBtnRef.value);
-    return;
-  }
-  focusElement(statusLunasBtnRef.value);
+  const moneyEl = (moneyInputRef.value?.$el || moneyInputRef.value) as HTMLElement;
+  focusNextFormField(moneyEl);
 }
 
 function onPaymentStatusChanged(status: 'lunas' | 'hutang') {
@@ -1100,6 +1143,12 @@ async function handleSubmit() {
 
   if (nominal.value <= 0) {
     errorMessage.value = 'Nominal transaksi harus lebih besar dari Rp0.';
+    return;
+  }
+
+  // Validasi fee untuk Tarik Tunai
+  if (layanan.value === 'tarik_tunai' && fee.value > nominal.value) {
+    errorMessage.value = 'Biaya admin tidak boleh lebih besar dari nominal.';
     return;
   }
 
@@ -1506,20 +1555,54 @@ async function handleSubmit() {
   color: var(--color-warning);
 }
 
+.tarik-tunai-calc-box {
+  background: var(--surface-card-subtle, #f8fafc);
+  border: 1px dashed var(--color-primary-light, #93c5fd);
+  border-radius: var(--radius-btn);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.calc-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.calc-value {
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.text-accent {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
 .sticky-footer {
-  position: sticky;
-  bottom: max(8px, calc(70px - env(keyboard-inset-height, 0px)));
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  max-width: min(calc(100vw - 32px), 568px);
+  margin: 0 auto;
+  bottom: 74px;
+  --keyboard-inset: env(keyboard-inset-height, 0px);
   background: var(--surface-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
-  padding: 12px 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  padding: 10px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
-  z-index: 20;
+  z-index: 50;
+  transition: bottom 0.15s ease-out;
 }
 
-.keyboard-open .sticky-footer {
+.keyboard-open .sticky-footer,
+.tx-form.keyboard-open .sticky-footer {
   bottom: 8px;
 }
 

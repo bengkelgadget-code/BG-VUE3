@@ -6,7 +6,7 @@
         <h2 class="page-title">Tambah Pelanggan</h2>
       </div>
 
-      <form class="customer-form" @submit.prevent="handleSubmit">
+      <form class="customer-form" @submit.prevent="handleSubmit" @keydown.enter="handleFormKeyDown($event, $el)">
         <div v-if="errorMessage" class="error-banner">
           {{ errorMessage }}
         </div>
@@ -59,6 +59,7 @@ import AppScaffold from '../components/AppScaffold.vue';
 import { customerService } from '../services/customerService';
 import { useAuthStore } from '../stores/authStore';
 import { AppError } from '../core/errors';
+import { handleFormKeyDown } from '../utils/formNavigation';
 
 const router = useRouter();
 const authStore = useAuthStore();

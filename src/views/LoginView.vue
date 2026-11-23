@@ -47,7 +47,7 @@
         </router-link>
       </div>
 
-      <form v-else class="login-form" @submit.prevent="handleLogin">
+      <form v-else class="login-form" @submit.prevent="handleLogin" @keydown.enter="handleFormKeyDown($event, $el)">
         <div class="form-group">
           <label for="select-user" class="form-label">Pilih Petugas</label>
           <SearchableSelect
@@ -95,6 +95,7 @@ import { useAuthStore } from '../stores/authStore';
 import { supabaseSyncService } from '../services/supabaseSyncService';
 import { AppError } from '../core/errors';
 import SearchableSelect from '../components/SearchableSelect.vue';
+import { handleFormKeyDown } from '../utils/formNavigation';
 
 const router = useRouter();
 const authStore = useAuthStore();

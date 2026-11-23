@@ -19,7 +19,7 @@
         <span class="tx-date-full">{{ formatTanggalWita(transaction.date) }}</span>
 
         <div v-if="transaction.fee > 0" class="fee-info">
-          Biaya Admin: {{ formatRupiah(transaction.fee) }} ({{ transaction.feePaidBy === 'debit_rekening' ? 'Debit Rekening' : 'Cash' }})
+          Biaya Admin: {{ formatRupiah(transaction.fee) }} ({{ transaction.feePaidBy === 'debit_rekening' ? (transaction.layanan === 'tarik_tunai' ? 'Potong di Dalam' : 'Debit Rekening') : 'Cash' }})
         </div>
       </div>
 
@@ -55,6 +55,14 @@
         </div>
 
         <template v-if="transaction.layanan === 'tarik_tunai'">
+          <div v-if="transaction.fee > 0" class="detail-row">
+            <span class="d-label">Biaya Admin</span>
+            <span class="d-val">{{ formatRupiah(transaction.fee) }} ({{ transaction.feePaidBy === 'debit_rekening' ? 'Potong di Dalam' : 'Cash' }})</span>
+          </div>
+          <div class="detail-row">
+            <span class="d-label">Tunai Diserahkan</span>
+            <span class="d-val text-bold">{{ formatRupiah(transaction.feePaidBy === 'debit_rekening' ? (transaction.nominal - transaction.fee) : transaction.nominal) }}</span>
+          </div>
           <div v-if="sourceAccountName" class="detail-row">
             <span class="d-label">Rekening Terima Transfer</span>
             <span class="d-val">{{ sourceAccountName }}</span>
@@ -231,6 +239,31 @@
                 data-testid="edit-input-fee"
                 required
               />
+            </div>
+
+            <!-- Toggle Bayar Admin jika layanan memiliki feePaidBy -->
+            <div v-if="currentLayananDef?.hasFeePaidBy" class="form-group" data-testid="edit-fee-paid-by-group">
+              <label class="form-label">{{ transaction.layanan === 'tarik_tunai' ? 'Metode Biaya Admin' : 'Bayar Admin' }}</label>
+              <div class="toggle-group">
+                <button
+                  type="button"
+                  class="toggle-btn"
+                  :class="{ active: editForm.feePaidBy === 'cash' }"
+                  data-testid="edit-fee-cash"
+                  @click="editForm.feePaidBy = 'cash'"
+                >
+                  Cash
+                </button>
+                <button
+                  type="button"
+                  class="toggle-btn"
+                  :class="{ active: editForm.feePaidBy === 'debit_rekening' }"
+                  data-testid="edit-fee-debit"
+                  @click="editForm.feePaidBy = 'debit_rekening'"
+                >
+                  {{ transaction.layanan === 'tarik_tunai' ? 'Potong di Dalam' : 'Debit Rekening' }}
+                </button>
+              </div>
             </div>
 
             <div v-if="transaction.layanan === 'data'" class="form-group">
@@ -459,6 +492,7 @@ const canEditAccounts = computed(() => {
 const currentTxDef = computed(() =>
   transaction.value ? getLayananDef(transaction.value.layanan) : undefined
 );
+const currentLayananDef = currentTxDef;
 
 const tarikTunaiKasOptions = computed(() => {
   return activeAccounts.value
@@ -548,6 +582,7 @@ const showEditDialog = ref<boolean>(false);
 const editForm = ref({
   nominal: 0,
   fee: 0,
+  feePaidBy: 'cash' as 'cash' | 'debit_rekening',
   margin: 0,
   customerName: '',
   note: '',
@@ -612,6 +647,7 @@ async function openEditDialog() {
   editForm.value = {
     nominal: transaction.value.nominal,
     fee: transaction.value.fee,
+    feePaidBy: transaction.value.feePaidBy || 'cash',
     margin: transaction.value.margin ?? 0,
     customerName: customerName.value,
     note: transaction.value.note || '',
@@ -696,6 +732,10 @@ async function handleEdit() {
     editError.value = 'Biaya admin tidak boleh negatif.';
     return;
   }
+  if (transaction.value.layanan === 'tarik_tunai' && editForm.value.fee > editForm.value.nominal) {
+    editError.value = 'Biaya admin tidak boleh lebih besar dari nominal.';
+    return;
+  }
   if (transaction.value.layanan === 'data') {
     const m = editForm.value.margin;
     if (!Number.isInteger(m)) {
@@ -720,6 +760,7 @@ async function handleEdit() {
         nominal: editForm.value.nominal,
         margin: transaction.value.layanan === 'data' ? editForm.value.margin : undefined,
         fee: editForm.value.fee,
+        feePaidBy: currentLayananDef.value?.hasFeePaidBy ? editForm.value.feePaidBy : undefined,
         note: editForm.value.note,
         customerName: editForm.value.customerName,
         sourceAccountId: canEditAccounts.value ? (editForm.value.sourceAccountId || undefined) : undefined,

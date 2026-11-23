@@ -83,13 +83,29 @@ export class BalanceService {
           delta: nominal,
           kind: 'pokok',
         });
-        // Kasir menyerahkan uang tunai ke pelanggan: -(N - F)
-        // (Bila debit_rekening: pelanggan menerima N - F; bila cash: pelanggan menerima N dan membayar F tunai)
-        deltas.push({
-          accountId: paymentAccountId,
-          delta: -(nominal - fee),
-          kind: 'pokok',
-        });
+        if (feePaidBy === 'cash') {
+          // Mode Cash: Kasir menyerahkan uang tunai penuh (-N)
+          deltas.push({
+            accountId: paymentAccountId,
+            delta: -nominal,
+            kind: 'pokok',
+          });
+          // Pelanggan membayar biaya admin tunai terpisah (+F)
+          if (fee > 0) {
+            deltas.push({
+              accountId: paymentAccountId,
+              delta: fee,
+              kind: 'fee',
+            });
+          }
+        } else {
+          // Mode Potong di Dalam (debit_rekening): Kasir menyerahkan uang tunai dipotong admin: -(N - F)
+          deltas.push({
+            accountId: paymentAccountId,
+            delta: -(nominal - fee),
+            kind: 'pokok',
+          });
+        }
         break;
       }
 

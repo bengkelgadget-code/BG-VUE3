@@ -48,7 +48,24 @@ describe('BalanceService (Perhitungan Delta Saldo Catatan)', () => {
     expect(deltas.find((d) => d.accountId === 'kas-laci')?.delta).toBe(500000);
   });
 
-  it('Tarik Tunai: bank sumber +100.000, Kas diserahkan -(100.000 - 5.000) = -95.000', () => {
+  it('Tarik Tunai: bank sumber +100.000, Kas diserahkan -(100.000 - 5.000) = -95.000 (Mode Potong di Dalam)', () => {
+    const deltas = balanceService.computeDeltas({
+      layanan: 'tarik_tunai',
+      sourceAccountId: 'bank-bca',
+      paymentAccountId: 'kas-laci',
+      nominal: 100000,
+      fee: 5000,
+      feePaidBy: 'debit_rekening',
+      modal: 0,
+      hargaJual: 0,
+    });
+
+    expect(deltas).toHaveLength(2);
+    expect(deltas.find((d) => d.accountId === 'bank-bca')?.delta).toBe(100000);
+    expect(deltas.find((d) => d.accountId === 'kas-laci')?.delta).toBe(-95000);
+  });
+
+  it('Tarik Tunai: bank sumber +100.000, Kas diserahkan -100.000, Kas fee +5.000 (Mode Cash b37)', () => {
     const deltas = balanceService.computeDeltas({
       layanan: 'tarik_tunai',
       sourceAccountId: 'bank-bca',
@@ -60,9 +77,10 @@ describe('BalanceService (Perhitungan Delta Saldo Catatan)', () => {
       hargaJual: 0,
     });
 
-    expect(deltas).toHaveLength(2);
+    expect(deltas).toHaveLength(3);
     expect(deltas.find((d) => d.accountId === 'bank-bca')?.delta).toBe(100000);
-    expect(deltas.find((d) => d.accountId === 'kas-laci')?.delta).toBe(-95000);
+    expect(deltas.find((d) => d.accountId === 'kas-laci' && d.kind === 'pokok')?.delta).toBe(-100000);
+    expect(deltas.find((d) => d.accountId === 'kas-laci' && d.kind === 'fee')?.delta).toBe(5000);
   });
 
   it('Pulsa: server pulsa catatan -24.500 (modal), Kas +27.000 (jual)', () => {

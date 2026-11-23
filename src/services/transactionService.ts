@@ -44,6 +44,7 @@ export interface EditTransactionInput {
   nominal?: number;
   margin?: number;
   fee?: number;
+  feePaidBy?: 'cash' | 'debit_rekening';
   note?: string;
   customerName?: string;
   sourceAccountId?: string;
@@ -230,6 +231,13 @@ export class TransactionService {
       if (!input.dateChangeReason || input.dateChangeReason.trim().length < 3) {
         throw new AppError('Alasan perubahan tanggal transaksi wajib diisi minimal 3 karakter.');
       }
+    }
+
+    if (input.fee < 0) {
+      throw new AppError('Biaya admin tidak boleh negatif.');
+    }
+    if (input.layanan === 'tarik_tunai' && input.fee > input.nominal) {
+      throw new AppError('Biaya admin tidak boleh lebih besar dari nominal.');
     }
 
     let margin: number | undefined = undefined;
@@ -821,16 +829,21 @@ export class TransactionService {
       }
     }
 
+    const newFeePaidBy = input.feePaidBy !== undefined ? input.feePaidBy : tx.feePaidBy;
     const newFee = input.fee !== undefined ? input.fee : tx.fee;
     if (newFee < 0 || !Number.isFinite(newFee)) {
       throw new AppError('Biaya admin tidak boleh negatif.');
+    }
+    if (tx.layanan === 'tarik_tunai' && newFee > newNominal) {
+      throw new AppError('Biaya admin tidak boleh lebih besar dari nominal.');
     }
 
     const newNote = input.note !== undefined ? input.note.trim() : (tx.note || '');
 
     const now = Date.now();
     const isMarginChanged = tx.layanan === 'data' && newMargin !== (tx.margin ?? 0);
-    const isAmountChanged = newNominal !== tx.nominal || newFee !== tx.fee || isMarginChanged;
+    const isFeePaidByChanged = newFeePaidBy !== tx.feePaidBy;
+    const isAmountChanged = newNominal !== tx.nominal || newFee !== tx.fee || isMarginChanged || isFeePaidByChanged;
     const shouldRebalance = isAmountChanged || isAccountChanged;
 
     await db.transaction(
@@ -928,7 +941,7 @@ export class TransactionService {
             modal,
             hargaJual,
             fee: newFee,
-            feePaidBy: tx.feePaidBy,
+            feePaidBy: newFeePaidBy,
           });
 
           // T6: Validasi saldo sebelum menerapkan delta baru (periksa akun dengan delta keluar)
@@ -986,6 +999,7 @@ export class TransactionService {
         const updatePayload: Partial<Transaction> = {
           nominal: newNominal,
           fee: newFee,
+          feePaidBy: newFeePaidBy,
           note: newNote,
           feeManualOverride: input.fee !== undefined ? true : tx.feeManualOverride,
           updatedAt: now,
@@ -1007,12 +1021,14 @@ export class TransactionService {
         const oldAuditDetail: Record<string, unknown> = {
           nominal: tx.nominal,
           fee: tx.fee,
+          feePaidBy: tx.feePaidBy,
           note: tx.note,
           customerName: oldCustomerName,
         };
         const newAuditDetail: Record<string, unknown> = {
           nominal: newNominal,
           fee: newFee,
+          feePaidBy: newFeePaidBy,
           note: newNote,
           customerName: updatedCustomerName ?? oldCustomerName,
         };
